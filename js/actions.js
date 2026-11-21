@@ -7,6 +7,7 @@ import { resultCache } from './views/add.js';
 import { openPreview, getDetails, refreshPreviewActions } from './views/preview.js';
 import { sampleLibrary } from './sample.js';
 import { openCoverPicker, setCover } from './covers.js';
+import { testGoogleKey } from './api.js';
 
 const rerender = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
 
@@ -136,6 +137,21 @@ export function handleAction(e) {
         store.replaceAll(sampleLibrary()); toast('Sample library loaded'); location.hash = '#/';
       }
       break;
+    case 'save-google-key': {
+      const key = document.getElementById('google-key').value.trim();
+      const show = (msg, ok) => {
+        const el = document.getElementById('google-key-status');
+        if (el) { el.textContent = msg; el.style.color = ok ? 'var(--sage)' : 'var(--warn-3)'; }
+      };
+      if (!key) { show('Paste a key first.', false); break; }
+      show('Testing…', true);
+      testGoogleKey(key).then(({ ok, message }) => {
+        if (ok) { store.setGoogleKey(key); toast('Google Books is on'); }
+        show(message, ok);
+      });
+      break;
+    }
+    case 'remove-google-key': store.setGoogleKey(''); toast('Google Books key removed'); break;
     case 'export': download(`shelflife-backup-${store.today()}.json`, store.exportJSON()); break;
     case 'clear-all':
       if (confirm('Erase every book and setting on this device? Export a backup first if you might want it back.')) {

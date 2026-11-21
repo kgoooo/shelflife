@@ -42,6 +42,7 @@ export function newBook(fields = {}) {
     id: uid(),
     olKey: null,
     appleId: null,
+    googleId: null,
     title: 'Untitled',
     authors: [],
     cover: null,
@@ -109,16 +110,23 @@ export function addCustom(kind, name) {
 
 // Search results are keyed by Open Library work ("/works/OL…W") or Apple Books id ("apple:123").
 export const findByKey = (key) => key && state.books.find((b) =>
-  b.olKey === key || (b.appleId && `apple:${b.appleId}` === key));
+  b.olKey === key || (b.appleId && `apple:${b.appleId}` === key) || (b.googleId && `google:${b.googleId}` === key));
 
-export function exportJSON() { return JSON.stringify(state, null, 2); }
+// The Google key stays on this device: never written into backup files.
+export function exportJSON() {
+  const { googleKey, ...rest } = state;
+  return JSON.stringify(rest, null, 2);
+}
+
+export function setGoogleKey(key) { state.googleKey = key.trim(); persist(); }
 
 export function importJSON(text) {
   const s = JSON.parse(text);
   if (!s || !Array.isArray(s.books)) throw new Error('That file is not a Shelflife backup.');
-  state = { ...defaults(), ...s };
+  const { googleKey } = state;
+  state = { ...defaults(), ...s, googleKey };
   persist();
 }
 
-export function replaceAll(next) { state = { ...defaults(), ...next }; persist(); }
+export function replaceAll(next) { state = { ...defaults(), ...next, googleKey: state.googleKey }; persist(); }
 export function clearAll() { state = defaults(); persist(); }

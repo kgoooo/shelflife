@@ -1,4 +1,5 @@
 import { getState, books } from '../store.js';
+import { esc } from '../ui.js';
 
 export function settingsView() {
   const s = getState();
@@ -10,6 +11,19 @@ export function settingsView() {
       <label class="field">Books to finish this year
         <input class="input" type="number" inputmode="numeric" min="1" value="${s.goal}" data-change="goal">
       </label>
+    </section>
+
+    <section class="card stack">
+      <div class="spread"><h2 class="h2">Google Books</h2><span class="tag ${s.googleKey ? 'sage' : ''}">${s.googleKey ? 'On' : 'Off'}</span></div>
+      <p class="small muted" style="margin:0">Optional. With your own free API key, search also checks Google Books, which helps with exact release dates and print-only books. The key is saved on this device only and is left out of backups.</p>
+      <label class="field">API key
+        <input class="input" id="google-key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your key (starts with AIza…)" value="${esc(s.googleKey || '')}">
+      </label>
+      <div class="row" style="flex-wrap:wrap">
+        <button class="btn btn-light" data-action="save-google-key">Save &amp; test</button>
+        ${s.googleKey ? '<button class="btn btn-ghost" data-action="remove-google-key">Remove key</button>' : ''}
+      </div>
+      <p class="small" id="google-key-status" role="status" style="margin:0"></p>
     </section>
 
     <section class="card stack">

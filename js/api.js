@@ -1,6 +1,8 @@
 // Book data comes from two free, keyless sources:
 //  - Open Library (https://openlibrary.org/developers/api): series, page counts, subjects
-//  - Apple Books search (iTunes Search API): new releases, pre-orders with release dates, sharp covers
+//  - Apple Books search (iTunes Search API), ebooks and audiobooks: new releases, pre-orders with release dates, sharp covers
+//  - Google Books (optional, needs your own free API key in Settings): exact release dates, print-only books
+import { getState } from './store.js';
 const OL = 'https://openlibrary.org';
 
 export const coverUrl = (coverId, size = 'M') =>
@@ -15,6 +17,7 @@ function fromSearchDoc(d) {
     cover: coverUrl(d.cover_i),
     pages: d.number_of_pages_median || null,
     year: d.first_publish_year || null,
+    releaseDate: releaseFromDates(d.publish_date),
     subjects: (d.subject || []).slice(0, 25),
     seriesKey: d.series_key?.[0] || null,
     series: d.series_name?.[0] || '',
@@ -24,7 +27,28 @@ function fromSearchDoc(d) {
   };
 }
 
-const SEARCH_FIELDS = 'key,title,author_name,cover_i,number_of_pages_median,first_publish_year,subject,series_key,series_name,series_position';
+const SEARCH_FIELDS = 'key,title,author_name,cover_i,number_of_pages_median,first_publish_year,publish_date,subject,series_key,series_name,series_position';
+
+const isoDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const todayISO = () => isoDay(new Date());
+
+// Open Library lists a publish date per edition, in many formats ("2027-04-20", "April 20, 2027", "2026").
+// Only dates with a day count. A book is upcoming when it has a dated edition in the future and none
+// already out; then the earliest future date is its release date.
+function releaseFromDates(dates = []) {
+  const full = [];
+  for (const raw of dates) {
+    const t = String(raw).trim();
+    const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) { full.push(`${iso[1]}-${iso[2]}-${iso[3]}`); continue; }
+    if (!/\d{1,2}(st|nd|rd|th)?,?\s+\d{4}|\d{1,2}\s+[a-z]+\.?\s+\d{4}/i.test(t)) continue; // needs a day
+    const d = new Date(t.replace(/(\d)(st|nd|rd|th)/, '$1'));
+    if (!isNaN(d)) full.push(isoDay(d));
+  }
+  const today = todayISO();
+  if (!full.length || full.some((d) => d <= today)) return null;
+  return full.sort()[0];
+}
 
 export async function searchBooks(q, { limit = 20, signal } = {}) {
   const url = `${OL}/search.json?q=${encodeURIComponent(q)}&fields=${SEARCH_FIELDS}&limit=${limit}`;
@@ -120,73 +144,218 @@ export function htmlToText(html) {
   return new DOMParser().parseFromString(withBreaks, 'text/html').body.textContent.trim();
 }
 
+// Knock-offs like "The Housemaid By Freida McFadden" published by someone else.
+function isKnockoff(title, artist) {
+  if (JUNK.test(title)) return true;
+  const by = title.match(/\bby\s+([^()|]+)$/i);
+  return !!by && !by[1].toLowerCase().includes(lastName(artist));
+}
+
+const cleanTitle = (t) => String(t || '').replace(/\s*\((unabridged|abridged)\)\s*$/i, '').trim();
+
 function fromApple(x) {
+  const audio = x.wrapperType === 'audiobook';
+  const id = audio ? x.collectionId : x.trackId;
   const date = x.releaseDate ? x.releaseDate.slice(0, 10) : null;
   return {
-    key: `apple:${x.trackId}`,
-    appleId: x.trackId,
+    key: `apple:${id}`,
+    appleId: id,
     olKey: null,
-    title: x.trackName,
+    title: cleanTitle(audio ? x.collectionName : x.trackName),
     authors: x.artistName ? x.artistName.split(/\s*(?:&|,| and )\s*/) : [],
     cover: bigAppleCover(x.artworkUrl100 || x.artworkUrl60),
+    squareCover: audio, // audiobook art is square; a real book cover is preferred when there is one
     pages: null,
     year: date ? +date.slice(0, 4) : null,
     releaseDate: date,
-    subjects: (x.genres || []).filter((g) => g !== 'Books'),
+    subjects: (x.genres || [x.primaryGenreName]).filter((g) => g && g !== 'Books' && g !== 'Audiobooks'),
     description: htmlToText(x.description),
     rating: x.userRatingCount ? { average: x.averageUserRating, count: x.userRatingCount, source: 'Apple Books' } : null,
     seriesKey: null, series: '', seriesNum: '',
   };
 }
 
-export async function appleSearch(term, { limit = 25, signal } = {}) {
-  const url = `${APPLE}?term=${encodeURIComponent(term)}&media=ebook&entity=ebook&country=us&limit=${limit}`;
+// Apple's ebook store; with { audio: true }, its audiobook store. Some books (often
+// Kindle-exclusive ebooks) are only on Apple as audiobooks, so search uses both.
+export async function appleSearch(term, { limit = 25, signal, audio = false } = {}) {
+  const kind = audio ? 'media=audiobook&entity=audiobook' : 'media=ebook&entity=ebook';
+  const url = `${APPLE}?term=${encodeURIComponent(term)}&${kind}&country=us&limit=${limit}`;
   const res = await fetch(url, { signal });
   if (!res.ok) throw new Error('Apple search failed');
   const data = await res.json();
-  return (data.results || []).filter((x) => x.trackName && !JUNK.test(x.trackName)).map(fromApple);
+  return (data.results || [])
+    .filter((x) => { const t = x.trackName || x.collectionName; return t && !isKnockoff(t, x.artistName); })
+    .map(fromApple);
 }
 
 const sameBook = (a, b) => norm(a.title) === norm(b.title) && lastName(a.authors[0]) === lastName(b.authors[0]);
 
-// Search both sources at once. Apple's ranking surfaces popular and brand-new books;
-// Open Library adds series info and page counts. Matching books are merged into one result.
-export async function findBooks(q, { signal } = {}) {
-  const isbn = /^[\d-]{10,17}$/.test(q.trim());
-  const [ol, apple] = await Promise.allSettled([
-    searchBooks(q, { limit: 25, signal }),
-    isbn ? Promise.resolve([]) : appleSearch(q, { limit: 25, signal }),
-  ]);
-  if (ol.status === 'rejected' && apple.status === 'rejected') throw ol.reason;
-  const olList = (ol.value || []).filter((r) => !JUNK.test(r.title));
-  const appleList = apple.value || [];
+// How well a result matches what was typed: title words count most, then author words.
+const STOP = new Set(['the', 'a', 'an', 'of', 'and', 'by', 'to', 'in', 'on', 'for']);
+const looksTranslated = (t) => /[^\x00-\x7F‘’“”–—…]/.test(t)
+  || /^(la|le|les|el|los|las|il|der|die|das|den|det|wenn|o|os|een|het)\s/i.test(t);
+
+function matchScore(r, q) {
+  const toks = (q.toLowerCase().match(/[a-z0-9]+/g) || []).filter((t) => t.length > 1 && !STOP.has(t));
+  if (!toks.length) return 0;
+  const words = (s) => ` ${String(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `;
+  const title = words(r.title), auth = words(r.authors.join(' '));
+  let s = 0, inAuthor = 0;
+  for (const t of toks) {
+    const a = auth.includes(` ${t} `);
+    if (a) inAuthor++;
+    if (title.includes(` ${t} `) || a) s += 2;
+    else if (title.includes(t)) s += 0.5;
+  }
+  let score = s / toks.length;
+  if (inAuthor === toks.length) score += 0.5;                 // searched for this author by name
+  if (norm(r.title) === norm(q)) score += 1;                  // exact title
+  if (r.cover) score += 0.05;
+  if (r.olKey) score += r.appleId ? 0.3 : 0.15;                // found in both catalogs = the main English edition
+  if (looksTranslated(r.title)) score -= 0.6;                 // keep English editions on top
+  return score;
+}
+
+function combine(q, olList, appleList, googleList = []) {
   const used = new Set();
   const merged = [];
   for (const a of appleList) {
-    if (merged.some((m) => sameBook(m, a))) continue;           // other editions / languages
+    if (merged.some((m) => sameBook(m, a))) continue;           // other editions / formats
     const o = olList.find((x) => !used.has(x) && sameBook(x, a));
     if (o) {
       used.add(o);
       merged.push({
         ...o,
-        cover: a.cover || o.cover,                              // Apple's covers are sharper and current
+        cover: a.squareCover ? o.cover || a.cover : a.cover || o.cover, // Apple's ebook covers are sharper and current
         olCover: o.cover,
         appleId: a.appleId,
-        releaseDate: a.releaseDate,
+        releaseDate: a.releaseDate > todayISO() || !o.releaseDate ? a.releaseDate : o.releaseDate,
         description: a.description,
         rating: a.rating,
         year: o.year || a.year,
       });
-    } else merged.push(a);
+    } else merged.push({ ...a });
   }
-  for (const o of olList) if (!used.has(o) && !merged.some((m) => sameBook(m, o))) merged.push(o);
-  return merged.slice(0, 30);
+  for (const o of olList) {
+    if (used.has(o)) continue;
+    const dup = merged.find((m) => sameBook(m, o));
+    if (!dup) { merged.push({ ...o }); continue; }
+    // Same book listed twice (placeholder + real entry): keep the fuller details of both.
+    if (!dup.cover && o.cover) dup.cover = o.cover;
+    if (!dup.pages && o.pages) dup.pages = o.pages;
+    if (!dup.seriesKey && o.seriesKey) Object.assign(dup, { seriesKey: o.seriesKey, series: o.series, seriesNum: o.seriesNum });
+    if (!dup.appleId && o.releaseDate && (!dup.releaseDate || o.releaseDate < dup.releaseDate)) dup.releaseDate = o.releaseDate;
+  }
+  // Google Books fills gaps: books neither source has, plus page counts and dated releases.
+  for (const g of googleList) {
+    const dup = merged.find((m) => sameBook(m, g));
+    if (!dup) { merged.push({ ...g }); continue; }
+    dup.googleId = g.googleId;
+    if (!dup.cover && g.cover) dup.cover = g.cover;
+    if (!dup.pages && g.pages) dup.pages = g.pages;
+    if (!dup.description && g.description) dup.description = g.description;
+    const today = todayISO();
+    if (g.releaseDate > today && !(dup.releaseDate > today) && !(dup.releaseDate && dup.appleId)) dup.releaseDate = g.releaseDate;
+  }
+  // Drop coverless Open Library duplicates of a title that's already listed with a cover.
+  const covered = new Set(merged.filter((m) => m.cover).map((m) => norm(m.title)));
+  return merged
+    .filter((m) => m.cover || !covered.has(norm(m.title)))
+    .map((r, i) => ({ r, i, s: matchScore(r, q) }))
+    .sort((x, y) => y.s - x.s || x.i - y.i)                      // best match first, then source order
+    .map((x) => x.r)
+    .slice(0, 30);
+}
+
+// Search Apple ebooks, Apple audiobooks and Open Library at once. Results are merged
+// (Apple: covers, new releases, pre-order dates; Open Library: series, page counts) and
+// ranked by how well they match. onUpdate fires as each source answers, so a slow
+// Open Library never holds up the list.
+export async function findBooks(q, { signal, onUpdate } = {}) {
+  const isbn = /^[\d-]{10,17}$/.test(q.trim());
+  const got = { ol: [], ebook: [], audio: [], google: [] };
+  const mix = () => combine(q, got.ol, [...got.ebook, ...got.audio], got.google);
+  const track = (name, p) => p.then((list) => { got[name] = list; onUpdate?.(mix()); return list; });
+  const key = googleKey();
+  const results = await Promise.allSettled([
+    track('ol', searchBooks(q, { limit: 25, signal }).then((l) => l.filter((r) => !JUNK.test(r.title)))),
+    track('ebook', isbn ? Promise.resolve([]) : appleSearch(q, { limit: 25, signal })),
+    track('audio', isbn ? Promise.resolve([]) : appleSearch(q, { limit: 15, signal, audio: true })),
+    ...(key ? [track('google', googleSearch(isbn ? `isbn:${q.replace(/\D/g, '')}` : q, { key, signal }))] : []),
+  ]);
+  if (results.every((r) => r.status === 'rejected')) throw results[0].reason;
+  return mix();
+}
+
+/* ---------------- Google Books (optional) ---------------- */
+export const googleKey = () => (getState().googleKey || '').trim();
+
+// Google dates: "2027-04-20", "2027-04" or "2027". Only a full date counts as a release date.
+const googleDate = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d : null);
+const googleCover = (links) => {
+  const u = links?.thumbnail || links?.smallThumbnail;
+  return u ? u.replace(/^http:/, 'https:').replace(/&edge=curl/, '') : null;
+};
+
+function fromGoogle(v) {
+  const i = v.volumeInfo || {};
+  const date = googleDate(i.publishedDate);
+  return {
+    key: `google:${v.id}`,
+    googleId: v.id,
+    olKey: null,
+    title: i.title || 'Untitled',
+    authors: i.authors || [],
+    cover: googleCover(i.imageLinks),
+    pages: i.pageCount || null,
+    year: i.publishedDate ? +i.publishedDate.slice(0, 4) : null,
+    releaseDate: date,
+    subjects: i.categories || [],
+    description: htmlToText(i.description),
+    rating: i.ratingsCount ? { average: i.averageRating, count: i.ratingsCount, source: 'Google Books' } : null,
+    seriesKey: null, series: '', seriesNum: '',
+  };
+}
+
+export async function googleSearch(q, { key = googleKey(), signal, limit = 20 } = {}) {
+  if (!key) return [];
+  const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=${limit}&printType=books&langRestrict=en&key=${encodeURIComponent(key)}`;
+  const res = await fetch(url, { signal });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error?.message || `Google Books error ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  return (data.items || [])
+    .filter((v) => v.volumeInfo?.title && !isKnockoff(v.volumeInfo.title, (v.volumeInfo.authors || [])[0]))
+    .map(fromGoogle);
+}
+
+// Settings → "Test key": a tiny search that explains what went wrong, in plain words.
+export async function testGoogleKey(key) {
+  try {
+    const list = await googleSearch('fourth wing yarros', { key, limit: 1, signal: withTimeout(12000) });
+    return { ok: true, message: list.length ? `Working. Found “${list[0].title}”.` : 'Working.' };
+  } catch (e) {
+    const m = String(e.message || '');
+    if (/API key not valid/i.test(m)) return { ok: false, message: 'Google says this key isn\'t valid. Check it was copied in full.' };
+    if (/referer|referrer/i.test(m)) return { ok: false, message: 'Google blocked this website address. Add this app\'s address under the key\'s Website restrictions.' };
+    if (/not been used|disabled|enable/i.test(m)) return { ok: false, message: 'The Books API isn\'t turned on for this project yet. Enable it in the Google Cloud console.' };
+    if (e.status === 429) return { ok: false, message: 'Google says the daily limit is used up. It resets tomorrow.' };
+    return { ok: false, message: m || 'Couldn\'t reach Google. Check your connection.' };
+  }
 }
 
 // Best Apple Books match for a title + author (used to fill in missing covers).
 export async function appleMatch(title, author) {
-  const list = await appleSearch(`${title} ${author || ''}`, { limit: 10, signal: withTimeout(12000) });
-  return list.find((a) => sameBook(a, { title, authors: [author] })) || null;
+  const want = { title, authors: [author] };
+  for (const audio of [false, true]) {
+    const list = await appleSearch(`${title} ${author || ''}`, { limit: 10, signal: withTimeout(12000), audio });
+    const hit = list.find((a) => sameBook(a, want));
+    if (hit) return hit;
+  }
+  return null;
 }
 
 // Cover choices for the "Change cover" picker.

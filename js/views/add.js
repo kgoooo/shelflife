@@ -26,7 +26,7 @@ function resultRow(r) {
     <button class="tile-link" data-action="preview" data-key="${esc(r.key)}" aria-label="More about ${esc(r.title)}" style="width:56px">${coverHTML(r)}</button>
     <div class="info">
       <button class="tile-link t" data-action="preview" data-key="${esc(r.key)}">${esc(r.title)}</button>
-      <div class="a">${authorLine(r)}${r.year ? ` · ${r.year}` : ''}${r.pages ? ` · ${r.pages} pp` : ''}</div>
+      <div class="a">${authorLine(r)}${r.year && !(r.releaseDate > today()) ? ` · ${r.year}` : ''}${r.pages ? ` · ${r.pages} pp` : ''}</div>
       ${r.seriesKey ? `<a class="series-link small" href="#/series/${esc(r.seriesKey)}">${r.seriesNum ? `Book ${esc(r.seriesNum)} · ` : ''}${esc(r.series)} <span aria-hidden="true">→</span></a>` : ''}
       <div class="actions" style="margin-top:8px">
         ${owned
@@ -69,8 +69,12 @@ async function run(root, q) {
   controller = new AbortController();
   root.querySelector('#add-results').innerHTML = '<div class="center" style="padding:20px"><span class="loader"></span></div>';
   try {
-    lastResults = await findBooks(q, { signal: controller.signal });
-    paint(root);
+    const mine = controller;
+    lastResults = await findBooks(q, {
+      signal: controller.signal,
+      onUpdate: (partial) => { if (mine === controller && partial.length) { lastResults = partial; paint(root); } },
+    });
+    if (mine === controller) paint(root);
   } catch (e) {
     if (e.name === 'AbortError') return;
     root.querySelector('#add-results').innerHTML = '<p class="faint small center">Couldn\'t reach Open Library. Check your connection and try again.</p>';

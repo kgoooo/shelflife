@@ -1,5 +1,5 @@
 // Offline support: app files are cached on install; covers and fonts are cached as you browse.
-const VERSION = 'shelflife-v4';
+const VERSION = 'shelflife-v7';
 const APP_FILES = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/app.js', 'js/actions.js', 'js/api.js', 'js/charts.js', 'js/covers.js', 'js/data.js', 'js/sample.js', 'js/store.js', 'js/ui.js',
@@ -22,10 +22,10 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
 
   // Open Library search/API calls: always live.
-  if (url.hostname === 'openlibrary.org' || url.hostname === 'itunes.apple.com') return;
+  if (url.hostname === 'openlibrary.org' || url.hostname === 'itunes.apple.com' || url.hostname === 'www.googleapis.com') return;
 
   // Covers + fonts: cache first, they never change.
-  if (url.hostname === 'covers.openlibrary.org' || url.hostname.endsWith('mzstatic.com') || url.hostname.endsWith('gstatic.com') || url.hostname === 'fonts.googleapis.com') {
+  if (url.hostname === 'covers.openlibrary.org' || url.hostname.endsWith('mzstatic.com') || url.hostname === 'books.google.com' || url.hostname.endsWith('gstatic.com') || url.hostname === 'fonts.googleapis.com') {
     e.respondWith(caches.open('shelflife-media').then(async (c) => {
       const hit = await c.match(e.request);
       if (hit) return hit;

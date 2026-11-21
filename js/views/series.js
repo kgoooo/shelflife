@@ -13,7 +13,7 @@ export const seriesHref = (b) => b.seriesKey ? `#/series/${b.seriesKey}` : `#/se
 
 // Books added before series data was stored: look it up once in the background.
 export function ensureSeries(b) {
-  if (b.seriesKey || b.seriesChecked || checking.has(b.id) || (!b.olKey && !b.appleId)) return;
+  if (b.seriesKey || b.seriesChecked || checking.has(b.id) || (!b.olKey && !b.appleId && !b.googleId)) return;
   checking.add(b.id);
   // Books found only on Apple Books get matched to their Open Library work first (for series + page count).
   const lookup = b.olKey
