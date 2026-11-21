@@ -38,6 +38,27 @@ function warningChips(b) {
   return `<div class="row-wrap">${entries.map(([w, s]) => `<span class="chip warn-${s}" style="cursor:default">${esc(w)} <span class="sev">${SEVERITY[s]}</span></span>`).join('')}</div>`;
 }
 
+function suggestionNote(b) {
+  const a = b.suggested;
+  if (!a) return '';
+  const parts = [
+    a.tropes?.length && `${a.tropes.length} trope${a.tropes.length === 1 ? '' : 's'}`,
+    a.moods?.length && `${a.moods.length} mood${a.moods.length === 1 ? '' : 's'}`,
+    a.pace && 'pace',
+    a.warnings?.length && `${a.warnings.length} content warning${a.warnings.length === 1 ? '' : 's'}`,
+  ].filter(Boolean);
+  if (!parts.length) return '';
+  return `<div class="suggest-note">
+    <div class="row" style="gap:8px;align-items:flex-start">${icons.sparkle}
+      <p class="small" style="margin:0">Filled in ${parts.join(', ').replace(/, ([^,]*)$/, ' and $1')} from the book's description and genres. Double-check them; spice is up to you.</p>
+    </div>
+    <div class="row" style="justify-content:flex-end;gap:6px">
+      <button class="btn btn-sm btn-ghost" style="padding:0 12px" data-action="undo-suggestions" data-id="${b.id}">Undo</button>
+      <button class="btn btn-sm" style="padding:0 12px" data-action="keep-suggestions" data-id="${b.id}">Looks right</button>
+    </div>
+  </div>`;
+}
+
 export function bookDetail(b, backHref) {
   const back = backHref === 'back'
     ? `<a href="javascript:history.back()" class="back-link">${icons.back} Back</a>`
@@ -91,10 +112,15 @@ export function bookDetail(b, backHref) {
 
     ${b.status === 'read' || b.status === 'dnf' ? `<section class="detail-section"><h3>Your rating</h3>${ratingControl(b)}</section>` : ''}
 
+    ${suggestionNote(b)}
+
     <section class="detail-section"><h3>Spice level</h3>${spiceControl(b)}</section>
 
     <section class="detail-section">
-      <h3>Tropes <button class="btn btn-sm btn-ghost" data-action="pick-tropes" data-id="${b.id}" style="padding:0 10px">${b.tropes.length ? 'Edit' : '+ Add'}</button></h3>
+      <h3>Tropes <span class="row" style="gap:4px">
+        ${b.description && !b.suggested ? `<button class="btn btn-sm btn-ghost" data-action="suggest-tags" data-id="${b.id}" style="padding:0 10px">${icons.sparkle} Suggest</button>` : ''}
+        <button class="btn btn-sm btn-ghost" data-action="pick-tropes" data-id="${b.id}" style="padding:0 10px">${b.tropes.length ? 'Edit' : '+ Add'}</button>
+      </span></h3>
       ${b.tropes.length ? `<div class="row-wrap">${b.tropes.map((t) => `<span class="chip trope on" style="cursor:default">${esc(t)}</span>`).join('')}</div>` : '<p class="small faint" style="margin:0">Enemies to lovers? Only one bed? Tag it.</p>'}
     </section>
 

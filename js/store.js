@@ -107,6 +107,7 @@ export function newBook(fields = {}) {
     notes: '',
     favorite: false,
     private: false,
+    suggested: null, // tags filled in automatically, so they can be undone
     ...fields,
   };
 }

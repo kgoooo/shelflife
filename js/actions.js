@@ -8,6 +8,7 @@ import { openPreview, getDetails, refreshPreviewActions } from './views/preview.
 import { sampleLibrary } from './sample.js';
 import { openCoverPicker, setCover } from './covers.js';
 import { testGoogleKey } from './api.js';
+import { applySuggestions, undoSuggestions } from './autotag.js';
 
 const rerender = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
 
@@ -23,6 +24,10 @@ async function addFromResult(key, status) {
   if (extra.description && !b.description) patch.description = extra.description;
   if (!b.subjects.length && extra.subjects?.length) patch.subjects = extra.subjects.slice(0, 25);
   if (Object.keys(patch).length) store.updateBook(b.id, patch);
+  // Pre-fill tropes, moods, pace and stated content warnings from the blurb and genres.
+  const fresh = store.getBook(b.id);
+  const sug = fresh && applySuggestions(fresh, { description: extra.description, subjects: [...(extra.subjects || []), ...(r.subjects || [])] });
+  if (sug) store.updateBook(b.id, sug.patch);
 }
 
 // Refresh an open picker sheet in place, keeping its search text.
@@ -181,6 +186,14 @@ export function handleAction(e) {
       break;
     }
     case 'remove-google-key': store.setGoogleKey(''); toast('Google Books key removed'); break;
+    case 'suggest-tags': {
+      const sug = applySuggestions(b);
+      if (sug) { store.updateBook(id, sug.patch); toast(`Suggested ${sug.count} tag${sug.count === 1 ? '' : 's'}`); }
+      else toast('Nothing new to suggest from the description');
+      break;
+    }
+    case 'keep-suggestions': store.updateBook(id, { suggested: null }); break;
+    case 'undo-suggestions': store.updateBook(id, undoSuggestions(b)); toast('Suggestions removed'); break;
     case 'open-after-dark': openUnlock(); break;
     case 'lock-after-dark': store.lock(); toast('After Dark locked'); break;
     case 'change-pin': openPinSetup(null, true); break;
