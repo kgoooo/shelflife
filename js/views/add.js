@@ -1,5 +1,5 @@
 import { findBooks } from '../api.js';
-import { findByKey } from '../store.js';
+import { findByKey, isUnlocked } from '../store.js';
 import { esc, icons, coverHTML, authorLine, fmtDate } from '../ui.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -30,7 +30,7 @@ function resultRow(r) {
       ${r.seriesKey ? `<a class="series-link small" href="#/series/${esc(r.seriesKey)}">${r.seriesNum ? `Book ${esc(r.seriesNum)} · ` : ''}${esc(r.series)} <span aria-hidden="true">→</span></a>` : ''}
       <div class="actions" style="margin-top:8px">
         ${owned
-          ? `<a class="in-lib" href="#/book/${owned.id}">✓ In your library</a>`
+          ? owned.private && !isUnlocked() ? '<span class="in-lib">✓ In your library</span>' : `<a class="in-lib" href="#/book/${owned.id}">✓ In your library</a>`
           : r.releaseDate > today()
           ? `<span class="tag rose">Out ${fmtDate(r.releaseDate)}</span>
              <button class="btn btn-sm" style="padding:0 10px" data-action="add-result" data-key="${esc(r.key)}" data-v="upcoming">+ Upcoming</button>`

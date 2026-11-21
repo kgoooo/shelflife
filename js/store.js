@@ -31,8 +31,46 @@ function persist() {
 
 export const subscribe = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
 export const getState = () => state;
-export const books = () => state.books;
-export const getBook = (id) => state.books.find((b) => b.id === id);
+/* ---------- After Dark (private shelf) ----------
+   Books marked private are left out of everything the app shows until After Dark is
+   unlocked with the PIN. Unlocking lasts until the app is closed or put in the background.
+   This hides books from people looking at your screen; it is not encryption. */
+let unlocked = false;
+const notify = () => listeners.forEach((fn) => fn());
+export const isUnlocked = () => unlocked;
+export const hasPin = () => !!state.privatePin;
+export function lock() { if (unlocked) { unlocked = false; notify(); } }
+
+async function hashPin(pin, salt) {
+  const data = new TextEncoder().encode(`${salt}:${pin}`);
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+export async function setPin(pin) {
+  const salt = uid() + uid();
+  state.privatePin = { salt, hash: await hashPin(pin, salt) };
+  unlocked = true;
+  persist();
+}
+export async function unlock(pin) {
+  if (!state.privatePin) return false;
+  const ok = (await hashPin(pin, state.privatePin.salt)) === state.privatePin.hash;
+  if (ok) { unlocked = true; notify(); }
+  return ok;
+}
+// Forgotten PIN: the only way back in is to delete the private books.
+export function resetPrivate() {
+  state.books = state.books.filter((b) => !b.private);
+  state.privatePin = null;
+  unlocked = false;
+  persist();
+}
+
+// What the app shows. Private books only while After Dark is unlocked.
+export const books = () => (unlocked ? state.books : state.books.filter((b) => !b.private));
+export const getBook = (id) => state.books.find((b) => b.id === id);          // for edits
+export const getVisibleBook = (id) => books().find((b) => b.id === id);      // for screens
+export const privateCount = () => state.books.filter((b) => b.private).length;
 
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 export const today = () => new Date().toISOString().slice(0, 10);
@@ -68,6 +106,7 @@ export function newBook(fields = {}) {
     dateFinished: null,
     notes: '',
     favorite: false,
+    private: false,
     ...fields,
   };
 }
@@ -128,5 +167,9 @@ export function importJSON(text) {
   persist();
 }
 
-export function replaceAll(next) { state = { ...defaults(), ...next, googleKey: state.googleKey }; persist(); }
-export function clearAll() { state = defaults(); persist(); }
+export function replaceAll(next) {
+  // The sample library keeps your Google key and PIN.
+  state = { ...defaults(), ...next, googleKey: state.googleKey, privatePin: state.privatePin };
+  persist();
+}
+export function clearAll() { state = defaults(); unlocked = false; persist(); }

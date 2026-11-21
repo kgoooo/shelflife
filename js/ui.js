@@ -15,6 +15,8 @@ export const icons = {
   back: svg('<path d="M15 18l-6-6 6-6"/>', 'width="16" height="16"'),
   close: svg('<path d="M18 6 6 18M6 6l12 12"/>', 'width="18" height="18"'),
   heart: svg('<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/>', 'width="18" height="18"'),
+  lock: svg('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>', 'width="18" height="18"'),
+  moon: svg('<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/>', 'width="18" height="18"'),
   dice: svg('<rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/>', 'width="18" height="18"'),
   orbit: `<svg viewBox="0 0 64 24" fill="none" stroke="currentColor" stroke-width="1"><ellipse cx="32" cy="12" rx="31" ry="11"/><ellipse cx="32" cy="12" rx="20" ry="11"/><ellipse cx="32" cy="12" rx="8" ry="11"/><path d="M1 12h62M4 6.5h56M4 17.5h56"/></svg>`,
 };

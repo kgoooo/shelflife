@@ -1,5 +1,5 @@
-import { getState, books } from '../store.js';
-import { esc } from '../ui.js';
+import { getState, books, hasPin, isUnlocked, privateCount } from '../store.js';
+import { esc, icons } from '../ui.js';
 
 export function settingsView() {
   const s = getState();
@@ -11,6 +11,17 @@ export function settingsView() {
       <label class="field">Books to finish this year
         <input class="input" type="number" inputmode="numeric" min="1" value="${s.goal}" data-change="goal">
       </label>
+    </section>
+
+    <section class="card stack">
+      <div class="spread"><h2 class="h2 row" style="gap:8px">${icons.moon} After Dark</h2><span class="tag ${isUnlocked() ? 'rose' : ''}">${!hasPin() ? 'Off' : isUnlocked() ? 'Unlocked' : 'Locked'}</span></div>
+      <p class="small muted" style="margin:0">A private shelf behind a PIN. Books you mark <b>After Dark</b> on their page are hidden everywhere, stats included, until you unlock it. It locks again when you leave the app. Shortcut: press and hold the SHELFLIFE logo.</p>
+      <div class="row" style="flex-wrap:wrap">
+        ${!hasPin() ? '<button class="btn btn-light" data-action="open-after-dark">Set up a PIN</button>'
+          : isUnlocked() ? `<a class="btn btn-light" href="#/library/private">Open shelf (${privateCount()})</a><button class="btn" data-action="lock-after-dark">Lock</button><button class="btn btn-ghost" data-action="change-pin">Change PIN</button>`
+          : '<button class="btn btn-light" data-action="open-after-dark">Unlock</button>'}
+      </div>
+      <p class="tiny faint" style="margin:0">This hides books from anyone looking at your screen. It isn't encryption: exported backups include these books.</p>
     </section>
 
     <section class="card stack">

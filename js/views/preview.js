@@ -1,6 +1,6 @@
 // "Learn more" sheet for a book that isn't in your library yet (Discover suggestions, search results).
 import { workDetails, workRatings } from '../api.js';
-import { findByKey } from '../store.js';
+import { findByKey, isUnlocked } from '../store.js';
 import { TROPES, TROPE_SUBJECTS } from '../data.js';
 import { esc, coverHTML, openSheet, starsInline, fmtDate } from '../ui.js';
 import { resultCache } from './add.js';
@@ -44,6 +44,7 @@ function sortSubjects(subjects) {
 
 function actionsHTML(key) {
   const owned = findByKey(key);
+  if (owned && owned.private && !isUnlocked()) return '<div class="btn btn-block" style="cursor:default">✓ In your library</div>';
   if (owned) {
     return `<a class="btn btn-light btn-block" href="#/book/${owned.id}" data-close>✓ In your library · Open it</a>`;
   }

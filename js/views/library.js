@@ -1,4 +1,4 @@
-import { books, getBook } from '../store.js';
+import { books, getVisibleBook, isUnlocked } from '../store.js';
 import { STATUSES, SPICE } from '../data.js';
 import { esc, icons, starsInline, spiceInline, coverHTML, authorLine, countdownHTML } from '../ui.js';
 import { tile, emptyLibrary } from './home.js';
@@ -23,7 +23,8 @@ export function libraryView(status, selectedId) {
   const usedTropes = [...new Set(all.flatMap((b) => b.tropes))].sort();
   const f = libFilters;
   const q = f.q.trim().toLowerCase();
-  let list = all.filter((b) => status === 'all' || b.status === status);
+  if (status === 'private' && !isUnlocked()) status = 'reading';
+  let list = all.filter((b) => status === 'all' || (status === 'private' ? b.private : b.status === status));
   if (q) list = list.filter((b) => (b.title + ' ' + b.authors.join(' ') + ' ' + b.series + ' ' + b.tropes.join(' ')).toLowerCase().includes(q));
   if (f.spice !== 'any') list = list.filter((b) => b.spice != null && (f.spice === '0' ? b.spice === 0 : b.spice >= +f.spice));
   if (f.trope) list = list.filter((b) => b.tropes.includes(f.trope));
@@ -31,7 +32,7 @@ export function libraryView(status, selectedId) {
     ? [...list].sort((a, b) => (a.releaseDate || '9999').localeCompare(b.releaseDate || '9999'))
     : [...list].sort(sorters[f.sort] || sorters.recent);
 
-  const selected = selectedId && getBook(selectedId);
+  const selected = selectedId && getVisibleBook(selectedId);
   const base = `#/library/${status}`;
 
   return `<div class="lib ${selected ? 'has-detail' : ''}">
@@ -40,6 +41,7 @@ export function libraryView(status, selectedId) {
       <nav class="tabs" aria-label="Shelves">
         ${STATUSES.map((s) => `<a href="#/library/${s.id}" class="${s.id === status ? 'on' : ''}">${s.label} <span class="count">${counts[s.id]}</span></a>`).join('')}
         <a href="#/library/all" class="${status === 'all' ? 'on' : ''}">All</a>
+        ${isUnlocked() ? `<a href="#/library/private" class="${status === 'private' ? 'on' : ''}">${icons.moon} After Dark <span class="count">${all.filter((b) => b.private).length}</span></a>` : ''}
       </nav>
       <div class="search-wrap">${icons.search}<input class="input" type="search" placeholder="Filter by title, author, series, trope" value="${esc(f.q)}" data-change="lib-q" aria-label="Filter books"></div>
       <div class="filter-row">

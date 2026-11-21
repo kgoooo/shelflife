@@ -69,7 +69,36 @@ function manualAddSheet(d = {}) {
       <label class="field">Pages<input class="input" name="pages" type="number" inputmode="numeric"></label>
     </div>
     <label class="field">Release date${upcoming ? '' : ' (if it\'s not out yet)'}<input class="input" name="releaseDate" type="date"></label>
+    ${store.isUnlocked() ? '<label class="toggle-row small"><span>Add to After Dark</span><input type="checkbox" class="switch" name="private"></label>' : ''}
     <button class="btn btn-light" type="submit">Add book</button>
+  </form>`, (root) => root.querySelector('input').focus());
+}
+
+/* ---------- After Dark ---------- */
+const PIN_INPUT = (name, label) => `<label class="field">${label}
+  <input class="input pin-input" name="${name}" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="8" autocomplete="off" required></label>`;
+
+let pendingPrivateId = null; // book waiting to go private once a PIN exists
+
+function openPinSetup(bookId = null, change = false) {
+  pendingPrivateId = bookId;
+  openSheet(change ? 'Change After Dark PIN' : 'Set up After Dark', `<form class="stack" data-form="pin-setup">
+    <p class="small muted" style="margin:0">After Dark is a private shelf. Books on it are hidden everywhere in the app, stats included, until you unlock it with this PIN. It locks again whenever you leave the app.</p>
+    ${PIN_INPUT('pin', 'Choose a PIN (4–8 digits)')}
+    ${PIN_INPUT('pin2', 'Type it again')}
+    <p class="small" data-pin-error style="color:var(--warn-3);margin:0"></p>
+    <button class="btn btn-light" type="submit">${change ? 'Save new PIN' : 'Turn on After Dark'}</button>
+  </form>`, (root) => root.querySelector('input').focus());
+}
+
+export function openUnlock() {
+  if (store.isUnlocked()) { store.lock(); toast('After Dark locked'); return; }
+  if (!store.hasPin()) { openPinSetup(); return; }
+  openSheet('After Dark', `<form class="stack" data-form="pin-unlock">
+    ${PIN_INPUT('pin', 'PIN')}
+    <p class="small" data-pin-error style="color:var(--warn-3);margin:0"></p>
+    <button class="btn btn-light" type="submit">Unlock</button>
+    <button class="btn btn-ghost btn-sm" type="button" data-action="forgot-pin" style="align-self:center;padding:0 12px">Forgot PIN?</button>
   </form>`, (root) => root.querySelector('input').focus());
 }
 
@@ -152,6 +181,16 @@ export function handleAction(e) {
       break;
     }
     case 'remove-google-key': store.setGoogleKey(''); toast('Google Books key removed'); break;
+    case 'open-after-dark': openUnlock(); break;
+    case 'lock-after-dark': store.lock(); toast('After Dark locked'); break;
+    case 'change-pin': openPinSetup(null, true); break;
+    case 'forgot-pin': {
+      const n = store.privateCount();
+      if (confirm(`Your PIN can't be recovered. To start over, the ${n} book${n === 1 ? '' : 's'} on your After Dark shelf will be deleted and the PIN removed. (If you exported a backup, you can import it to get them back, along with the old PIN.)\n\nDelete them and reset?`)) {
+        store.resetPrivate(); closeSheet(); toast('After Dark reset');
+      }
+      break;
+    }
     case 'export': download(`shelflife-backup-${store.today()}.json`, store.exportJSON()); break;
     case 'clear-all':
       if (confirm('Erase every book and setting on this device? Export a backup first if you might want it back.')) {
@@ -173,6 +212,14 @@ export function handleChange(e) {
       if (b.pages) p = Math.min(p, b.pages);
       if (b.pages && p >= b.pages) { store.updateBook(id, { progress: p, status: 'read' }); toast(`Finished “${b.title}”!`); }
       else store.updateBook(id, { progress: p });
+      break;
+    }
+    case 'private': {
+      if (!el.checked) { store.updateBook(id, { private: false }); toast('Moved back to your main library'); break; }
+      if (!store.hasPin()) { el.checked = false; openPinSetup(id); break; }
+      store.updateBook(id, { private: true });
+      if (!store.isUnlocked()) { toast('Moved to After Dark'); location.hash = '#/library'; }
+      else toast('Moved to After Dark');
       break;
     }
     case 'releaseDate': store.updateBook(id, { releaseDate: val || null }); break;
@@ -217,6 +264,26 @@ export function handleSubmit(e) {
   if (!form) return;
   e.preventDefault();
   const fd = Object.fromEntries(new FormData(form));
+  const pinError = (msg) => { const el = form.querySelector('[data-pin-error]'); if (el) el.textContent = msg; };
+  if (form.dataset.form === 'pin-setup') {
+    if (!/^\d{4,8}$/.test(fd.pin)) return pinError('Use 4 to 8 digits.');
+    if (fd.pin !== fd.pin2) return pinError("Those PINs don't match.");
+    const wasSet = store.hasPin();
+    store.setPin(fd.pin).then(() => {
+      closeSheet();
+      if (pendingPrivateId) { store.updateBook(pendingPrivateId, { private: true }); toast('After Dark is on. Book moved there.'); }
+      else toast(wasSet ? 'PIN changed' : 'After Dark is on');
+      pendingPrivateId = null;
+    });
+    return;
+  }
+  if (form.dataset.form === 'pin-unlock') {
+    store.unlock(fd.pin).then((ok) => {
+      if (!ok) { pinError('Wrong PIN.'); form.pin.value = ''; form.pin.focus(); return; }
+      closeSheet(); toast('After Dark unlocked');
+    });
+    return;
+  }
   const authors = (fd.authors || '').split(',').map((s) => s.trim()).filter(Boolean);
   if (form.dataset.form === 'manual') {
     const releaseDate = fd.releaseDate || null;
@@ -224,6 +291,7 @@ export function handleSubmit(e) {
     const b = store.addBook({
       title: fd.title.trim(), authors, pages: +fd.pages || null, status, releaseDate,
       series: fd.series.trim(), seriesNum: fd.seriesNum.trim(), seriesKey: fd.seriesKey || null, seriesChecked: true,
+      private: !!fd.private,
     });
     closeSheet();
     toast(`Added “${b.title}”`);

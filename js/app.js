@@ -1,4 +1,4 @@
-import { subscribe } from './store.js';
+import { subscribe, isUnlocked, lock } from './store.js';
 import { icons } from './ui.js';
 import { wireCharts } from './charts.js';
 import { homeView } from './views/home.js';
@@ -10,7 +10,7 @@ import { statsView } from './views/stats.js';
 import { settingsView } from './views/settings.js';
 import { seriesView } from './views/series.js';
 import { backfillCovers } from './covers.js';
-import { handleAction, handleChange, handleInput, handleSubmit } from './actions.js';
+import { handleAction, handleChange, handleInput, handleSubmit, openUnlock } from './actions.js';
 
 const view = document.getElementById('view');
 const NAV = [
@@ -42,6 +42,7 @@ export function render() {
   const winScroll = window.scrollY;
 
   renderNav(section === 'book' || section === 'series' ? 'library' : section);
+  renderLockButton();
   let html = '';
   let mount;
   switch (section) {
@@ -84,6 +85,36 @@ document.body.addEventListener('change', (e) => { if (e.target.closest('#sheet')
 
 view.addEventListener('input', (e) => handleInput(e));
 document.addEventListener('submit', (e) => handleSubmit(e));
+
+// After Dark: a lock button shows in the top bar while it's unlocked.
+function renderLockButton() {
+  let btn = document.getElementById('lock-btn');
+  if (!isUnlocked()) { btn?.remove(); return; }
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.id = 'lock-btn';
+    btn.className = 'icon-btn lock-btn';
+    btn.setAttribute('aria-label', 'Lock After Dark');
+    btn.title = 'Lock After Dark';
+    btn.innerHTML = icons.lock;
+    btn.addEventListener('click', lock);
+    document.querySelector('.topbar-actions').prepend(btn);
+  }
+}
+
+// Lock as soon as the app is switched away from or closed.
+document.addEventListener('visibilitychange', () => { if (document.hidden) lock(); });
+window.addEventListener('pagehide', lock);
+
+// Shortcut: press and hold the SHELFLIFE logo to unlock After Dark.
+(() => {
+  const mark = document.querySelector('.wordmark');
+  let timer, held = false;
+  mark.addEventListener('pointerdown', () => { held = false; timer = setTimeout(() => { held = true; openUnlock(); }, 650); });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => mark.addEventListener(ev, () => clearTimeout(timer)));
+  mark.addEventListener('click', (e) => { if (held) e.preventDefault(); });
+  mark.addEventListener('contextmenu', (e) => e.preventDefault());
+})();
 
 window.addEventListener('hashchange', render);
 subscribe(render);

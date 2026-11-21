@@ -24,6 +24,7 @@ export function readingCard(b) {
 
 export function tile(b, href = `#/book/${b.id}`, extra = '') {
   return `<a class="book-tile" href="${href}">
+    ${b.private ? `<span class="private-badge" aria-label="After Dark">${icons.moon}</span>` : ''}
     ${coverHTML(b)}
     <div><div class="t">${esc(b.title)}</div><div class="a">${authorLine(b)}</div></div>
     ${extra}

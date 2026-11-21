@@ -1,11 +1,11 @@
-import { getBook, getState } from '../store.js';
+import { getVisibleBook, getState, isUnlocked } from '../store.js';
 import { STATUSES, SPICE, MOODS, PACES, FORMATS, SEVERITY, TROPE_GROUPS, WARNINGS } from '../data.js';
 import { esc, icons, coverHTML, starSvg, flameSvg, countdownHTML } from '../ui.js';
 import { ensureSeries, seriesHref } from './series.js';
 import { ensureCover } from '../covers.js';
 
 export function bookPage(id) {
-  const b = getBook(id);
+  const b = getVisibleBook(id);
   if (!b) return `<div class="empty"><p>That book isn't in your library.</p><a class="btn" href="#/library">Back to library</a></div>`;
   return `<div style="max-width:680px;margin:0 auto">${bookDetail(b, 'back')}</div>`;
 }
@@ -56,6 +56,7 @@ export function bookDetail(b, backHref) {
         ${coverHTML(b, 'L')}
         <div class="info">
           ${series}
+          ${b.private ? `<span class="tag private-tag">${icons.moon} After Dark</span>` : ''}
           <h1 class="detail-title">${esc(b.title)}</h1>
           <div class="muted">${esc(b.authors.join(', ') || 'Unknown author')}</div>
           <div class="small faint">${[b.year, b.pages ? `${b.pages} pages` : null, b.format].filter(Boolean).join(' · ')}</div>
@@ -126,6 +127,16 @@ export function bookDetail(b, backHref) {
       </label>
       <label class="field">Notes &amp; quotes
         <textarea class="input" data-change="notes" data-id="${b.id}" placeholder="Favorite lines, thoughts, who you'd recommend it to…">${esc(b.notes)}</textarea>
+      </label>
+    </section>
+
+    <section class="detail-section">
+      <label class="toggle-row">
+        <span>
+          <b>${icons.moon} After Dark</b>
+          <span class="small faint">Keep this book on your private shelf. It's hidden everywhere, stats included, until you unlock After Dark with your PIN.</span>
+        </span>
+        <input type="checkbox" class="switch" data-change="private" data-id="${b.id}" ${b.private ? 'checked' : ''} aria-label="Keep on After Dark shelf">
       </label>
     </section>
 
