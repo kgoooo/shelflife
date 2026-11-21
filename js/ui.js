@@ -92,3 +92,39 @@ export function closeSheet() {
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
 
 export const fmtDate = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+
+// Calendar countdown to a YYYY-MM-DD release date. null once it's out.
+export function countdown(dateStr) {
+  if (!dateStr) return undefined;
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  const r = new Date(dateStr + 'T00:00:00');
+  if (r <= t) return null;
+  let y = r.getFullYear() - t.getFullYear();
+  let m = r.getMonth() - t.getMonth();
+  let d = r.getDate() - t.getDate();
+  if (d < 0) { m--; d += new Date(r.getFullYear(), r.getMonth(), 0).getDate(); }
+  if (m < 0) { y--; m += 12; }
+  return { y, m, d, total: Math.round((r - t) / 864e5) };
+}
+
+export function countdownHTML(b, { big = false } = {}) {
+  const c = countdown(b.releaseDate);
+  if (c === undefined) return `<div class="countdown tba ${big ? 'big' : ''}"><span>Release date TBA</span></div>`;
+  if (c === null) {
+    return `<div class="countdown out ${big ? 'big' : ''}">
+      <span class="out-label">Out now</span>
+      <button class="btn btn-sm btn-light" style="padding:0 12px" data-action="status" data-id="${b.id}" data-v="tbr">Move to To read</button>
+    </div>`;
+  }
+  const added = new Date((b.dateAdded || store_today()) + 'T00:00:00');
+  const rel = new Date(b.releaseDate + 'T00:00:00');
+  const span = Math.max(1, rel - added);
+  const waited = Math.min(1, Math.max(0.02, (Date.now() - added) / span));
+  const cell = (n, label) => `<div class="cd-cell ${n === 0 ? 'zero' : ''}"><b>${n}</b><span>${label}${n === 1 ? '' : 's'}</span></div>`;
+  return `<div class="countdown ${big ? 'big' : ''}" aria-label="${c.total} days until release">
+    <div class="cd-cells">${cell(c.y, 'year')}${cell(c.m, 'month')}${cell(c.d, 'day')}</div>
+    <div class="cd-bar"><i style="width:${waited * 100}%"></i></div>
+    <div class="cd-foot"><span>${c.total.toLocaleString()} day${c.total === 1 ? '' : 's'} to go</span><span>${fmtDate(b.releaseDate)}</span></div>
+  </div>`;
+}
+const store_today = () => new Date().toISOString().slice(0, 10);

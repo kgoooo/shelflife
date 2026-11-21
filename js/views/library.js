@@ -1,6 +1,6 @@
 import { books, getBook } from '../store.js';
 import { STATUSES, SPICE } from '../data.js';
-import { esc, icons, starsInline, spiceInline } from '../ui.js';
+import { esc, icons, starsInline, spiceInline, coverHTML, authorLine, countdownHTML } from '../ui.js';
 import { tile, emptyLibrary } from './home.js';
 import { bookDetail } from './book.js';
 
@@ -27,7 +27,9 @@ export function libraryView(status, selectedId) {
   if (q) list = list.filter((b) => (b.title + ' ' + b.authors.join(' ') + ' ' + b.series + ' ' + b.tropes.join(' ')).toLowerCase().includes(q));
   if (f.spice !== 'any') list = list.filter((b) => b.spice != null && (f.spice === '0' ? b.spice === 0 : b.spice >= +f.spice));
   if (f.trope) list = list.filter((b) => b.tropes.includes(f.trope));
-  list = [...list].sort(sorters[f.sort] || sorters.recent);
+  list = status === 'upcoming'
+    ? [...list].sort((a, b) => (a.releaseDate || '9999').localeCompare(b.releaseDate || '9999'))
+    : [...list].sort(sorters[f.sort] || sorters.recent);
 
   const selected = selectedId && getBook(selectedId);
   const base = `#/library/${status}`;
@@ -53,9 +55,12 @@ export function libraryView(status, selectedId) {
           ${usedTropes.map((t) => `<option ${f.trope === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}
         </select>
       </div>
-      ${list.length
+      ${status === 'upcoming' ? upcomingIntro(list.length) : ''}
+      ${status === 'upcoming' && list.length
+        ? `<div class="upcoming-list">${list.map((b) => upcomingCard(b, `${base}/${b.id}`, b.id === selectedId)).join('')}</div>`
+        : list.length
         ? `<div class="book-grid">${list.map((b) => tile(b, `${base}/${b.id}`, metaFor(b)).replace('class="book-tile"', `class="book-tile ${b.id === selectedId ? 'selected' : ''}"`)).join('')}</div>`
-        : `<p class="empty small">No books match.</p>`}
+        : status === 'upcoming' ? '' : `<p class="empty small">No books match.</p>`}
     </div>
     <aside class="lib-detail" aria-label="Book details">
       ${selected ? bookDetail(selected, base) : ''}
@@ -67,4 +72,24 @@ function metaFor(b) {
   if (b.status === 'read' || b.status === 'dnf') return `<div class="tile-meta">${starsInline(b.rating) || spiceInline(b.spice)}</div>`;
   if (b.status === 'reading' && b.pages) return `<div class="progress"><i style="width:${Math.round((b.progress / b.pages) * 100)}%"></i></div>`;
   return `<div class="tile-meta">${spiceInline(b.spice)}</div>`;
+}
+
+export function upcomingCard(b, href = `#/book/${b.id}`, selected = false) {
+  const series = b.series ? `${esc(b.series)}${b.seriesNum ? ` · Book ${esc(b.seriesNum)}` : ''}` : '';
+  return `<div class="card upcoming-card ${selected ? 'selected' : ''}">
+    <a href="${href}">${coverHTML(b)}</a>
+    <div class="info">
+      ${series ? `<div class="eyebrow">${series}</div>` : ''}
+      <a href="${href}" class="t">${esc(b.title)}</a>
+      <div class="small faint">${authorLine(b)}</div>
+      ${countdownHTML(b)}
+    </div>
+  </div>`;
+}
+
+function upcomingIntro(n) {
+  return `<div class="row" style="justify-content:space-between;flex-wrap:wrap">
+    <p class="small muted" style="margin:0">${n ? 'Books you\'re waiting on, soonest first.' : 'Waiting on the next book in a series? Add it here with its release date and watch the countdown.'}</p>
+    <button class="btn btn-sm" style="padding:0 12px" data-action="manual-add" data-v="upcoming">+ Add upcoming book</button>
+  </div>`;
 }

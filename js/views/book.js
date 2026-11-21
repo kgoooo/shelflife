@@ -1,6 +1,8 @@
 import { getBook, getState } from '../store.js';
 import { STATUSES, SPICE, MOODS, PACES, FORMATS, SEVERITY, TROPE_GROUPS, WARNINGS } from '../data.js';
-import { esc, icons, coverHTML, starSvg, flameSvg } from '../ui.js';
+import { esc, icons, coverHTML, starSvg, flameSvg, countdownHTML } from '../ui.js';
+import { ensureSeries, seriesHref } from './series.js';
+import { ensureCover } from '../covers.js';
 
 export function bookPage(id) {
   const b = getBook(id);
@@ -41,7 +43,11 @@ export function bookDetail(b, backHref) {
     ? `<a href="javascript:history.back()" class="back-link">${icons.back} Back</a>`
     : `<a href="${backHref}" class="back-link">${icons.back} Back to shelf</a>`;
   const pct = b.pages ? Math.round((b.progress / b.pages) * 100) : 0;
-  const series = b.series ? `${esc(b.series)}${b.seriesNum ? ` #${esc(b.seriesNum)}` : ''}` : '';
+  ensureSeries(b);
+  ensureCover(b);
+  const series = b.series
+    ? `<a class="series-link" href="${seriesHref(b)}">${b.seriesNum ? `Book ${esc(b.seriesNum)} · ` : ''}${esc(b.series)} <span aria-hidden="true">→</span></a>`
+    : '';
 
   return `<article class="stack-lg" data-book="${b.id}">
     <div>
@@ -49,13 +55,14 @@ export function bookDetail(b, backHref) {
       <div class="detail-head">
         ${coverHTML(b, 'L')}
         <div class="info">
-          ${series ? `<div class="eyebrow">${series}</div>` : ''}
+          ${series}
           <h1 class="detail-title">${esc(b.title)}</h1>
           <div class="muted">${esc(b.authors.join(', ') || 'Unknown author')}</div>
           <div class="small faint">${[b.year, b.pages ? `${b.pages} pages` : null, b.format].filter(Boolean).join(' · ')}</div>
           <div class="row" style="margin-top:4px">
             <button class="icon-btn" data-action="fav" data-id="${b.id}" aria-label="Favorite" aria-pressed="${b.favorite}" style="${b.favorite ? 'color:var(--rose)' : ''}">${b.favorite ? icons.heart.replace('fill="none"', 'fill="currentColor"') : icons.heart}</button>
-            <button class="btn btn-sm btn-ghost" data-action="edit-info" data-id="${b.id}" style="padding:0 12px">Edit details</button>
+            <button class="btn btn-sm btn-ghost" data-action="edit-info" data-id="${b.id}" style="padding:0 10px">Edit</button>
+            <button class="btn btn-sm btn-ghost" data-action="pick-cover" data-id="${b.id}" style="padding:0 10px">Change cover</button>
           </div>
         </div>
       </div>
@@ -64,6 +71,11 @@ export function bookDetail(b, backHref) {
     <div class="status-pick" role="group" aria-label="Status">
       ${STATUSES.map((s) => `<button data-action="status" data-id="${b.id}" data-v="${s.id}" class="${b.status === s.id ? 'on' : ''}">${s.label}</button>`).join('')}
     </div>
+
+    ${b.status === 'upcoming' ? `<section class="stack">
+      ${countdownHTML(b, { big: true })}
+      <label class="field">Release date<input class="input" type="date" value="${b.releaseDate || ''}" data-change="releaseDate" data-id="${b.id}"></label>
+    </section>` : ''}
 
     ${b.status === 'reading' ? `<section class="stack" style="gap:8px">
       <div class="spread small"><span class="muted">Progress</span><span>${pct}%</span></div>
@@ -170,6 +182,7 @@ export function infoSheetBody(b) {
       <label class="field">Pages<input class="input" name="pages" type="number" inputmode="numeric" value="${b.pages || ''}"></label>
       <label class="field">Year<input class="input" name="year" type="number" inputmode="numeric" value="${b.year || ''}"></label>
     </div>
+    <label class="field">Release date (for upcoming books)<input class="input" name="releaseDate" type="date" value="${b.releaseDate || ''}"></label>
     <label class="field">Cover image URL<input class="input" name="cover" value="${esc(b.cover || '')}" placeholder="https://…"></label>
     <button class="btn btn-light" type="submit">Save</button>
   </form>`;

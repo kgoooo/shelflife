@@ -41,6 +41,7 @@ export function newBook(fields = {}) {
   return {
     id: uid(),
     olKey: null,
+    appleId: null,
     title: 'Untitled',
     authors: [],
     cover: null,
@@ -50,6 +51,8 @@ export function newBook(fields = {}) {
     description: '',
     series: '',
     seriesNum: '',
+    seriesKey: null,
+    releaseDate: null,
     status: 'tbr',
     rating: 0,
     spice: null,
@@ -104,7 +107,9 @@ export function addCustom(kind, name) {
   if (name && !list.includes(name)) { list.push(name); persist(); }
 }
 
-export const findByOlKey = (key) => key && state.books.find((b) => b.olKey === key);
+// Search results are keyed by Open Library work ("/works/OL…W") or Apple Books id ("apple:123").
+export const findByKey = (key) => key && state.books.find((b) =>
+  b.olKey === key || (b.appleId && `apple:${b.appleId}` === key));
 
 export function exportJSON() { return JSON.stringify(state, null, 2); }
 

@@ -1,19 +1,30 @@
 // "Learn more" sheet for a book that isn't in your library yet (Discover suggestions, search results).
 import { workDetails, workRatings } from '../api.js';
-import { findByOlKey } from '../store.js';
+import { findByKey } from '../store.js';
 import { TROPES, TROPE_SUBJECTS } from '../data.js';
-import { esc, coverHTML, openSheet, starsInline } from '../ui.js';
+import { esc, coverHTML, openSheet, starsInline, fmtDate } from '../ui.js';
 import { resultCache } from './add.js';
 
-const detailCache = new Map(); // olKey -> Promise<{description, subjects, ratings}>
+const detailCache = new Map(); // result key -> Promise<{description, subjects, ratings}>
 
+// Apple results already carry a description and rating; Open Library ones need two lookups.
+// Merged results prefer Apple's (usually fuller) description and larger rating sample.
 export function getDetails(key) {
   if (!detailCache.has(key)) {
-    detailCache.set(key, Promise.all([workDetails(key), workRatings(key)])
-      .then(([d, ratings]) => ({ ...d, ratings })));
+    const r = resultCache.get(key) || {};
+    const ol = r.olKey
+      ? Promise.all([workDetails(r.olKey), workRatings(r.olKey)]).then(([d, ratings]) => ({ ...d, ratings }))
+      : Promise.resolve({});
+    detailCache.set(key, ol.then((d) => ({
+      description: r.description || d.description || '',
+      subjects: d.subjects || [],
+      ratings: r.rating && (!d.ratings || r.rating.count > d.ratings.count) ? r.rating : d.ratings && { ...d.ratings, source: 'Open Library' },
+    })));
   }
   return detailCache.get(key);
 }
+
+const isFuture = (date) => date && date > new Date().toISOString().slice(0, 10);
 
 // Turn Open Library's messy subject list into likely tropes + a few clean genre tags.
 function sortSubjects(subjects) {
@@ -32,9 +43,12 @@ function sortSubjects(subjects) {
 }
 
 function actionsHTML(key) {
-  const owned = findByOlKey(key);
+  const owned = findByKey(key);
   if (owned) {
     return `<a class="btn btn-light btn-block" href="#/book/${owned.id}" data-close>✓ In your library · Open it</a>`;
+  }
+  if (isFuture(resultCache.get(key)?.releaseDate)) {
+    return `<button class="btn btn-light btn-block" data-action="add-result" data-key="${esc(key)}" data-v="upcoming">+ Add to Upcoming</button>`;
   }
   return `<div class="preview-actions">
     <button class="btn btn-light" data-action="add-result" data-key="${esc(key)}" data-v="tbr">+ To read</button>
@@ -57,7 +71,9 @@ export function openPreview(key) {
       <div class="stack" style="gap:6px;min-width:0">
         <h2 class="detail-title">${esc(r.title)}</h2>
         <div class="muted">${esc(r.authors.join(', ') || 'Unknown author')}</div>
-        <div class="small faint">${[r.year, r.pages ? `${r.pages} pages` : null].filter(Boolean).join(' · ')}</div>
+        <div class="small faint">${[isFuture(r.releaseDate) ? null : r.year, r.pages ? `${r.pages} pages` : null].filter(Boolean).join(' · ')}</div>
+        ${isFuture(r.releaseDate) ? `<span class="tag rose" style="align-self:flex-start">Comes out ${fmtDate(r.releaseDate)}</span>` : ''}
+        ${r.seriesKey ? `<a class="series-link" href="#/series/${esc(r.seriesKey)}" data-close>${r.seriesNum ? `Book ${esc(r.seriesNum)} · ` : ''}${esc(r.series)} · See the series <span aria-hidden="true">→</span></a>` : ''}
       </div>
     </div>
     <div data-preview-actions="${esc(key)}">${actionsHTML(key)}</div>
@@ -70,7 +86,7 @@ export function openPreview(key) {
     const { tropes, tags } = sortSubjects([...(d.subjects || []), ...(r.subjects || [])]);
     body.innerHTML = `<div class="stack-lg">
       ${d.ratings ? `<div class="preview-stats">
-        <span>${starsInline(Math.round(d.ratings.average * 2) / 2)} <b>${d.ratings.average.toFixed(1)}</b> on Open Library</span>
+        <span>${starsInline(Math.round(d.ratings.average * 2) / 2)} <b>${d.ratings.average.toFixed(1)}</b> on ${esc(d.ratings.source || 'Open Library')}</span>
         <span><b>${d.ratings.count.toLocaleString()}</b> ratings</span>
       </div>` : ''}
       <section class="detail-section" style="border:0;padding:0">

@@ -1,6 +1,7 @@
 import { books, getState } from '../store.js';
 import { esc, icons, coverHTML, authorLine, starsInline, spiceInline } from '../ui.js';
 import { goalRing } from '../charts.js';
+import { upcomingCard } from './library.js';
 
 export function readingCard(b) {
   const pct = b.pages ? Math.round((b.progress / b.pages) * 100) : 0;
@@ -47,6 +48,7 @@ export function homeView() {
   const year = new Date().getFullYear();
   const reading = all.filter((b) => b.status === 'reading');
   const tbr = all.filter((b) => b.status === 'tbr');
+  const upcoming = all.filter((b) => b.status === 'upcoming').sort((a, b) => (a.releaseDate || '9999').localeCompare(b.releaseDate || '9999'));
   const readThisYear = all.filter((b) => b.status === 'read' && b.dateFinished?.startsWith(String(year)));
   const recent = all.filter((b) => b.status === 'read' && b.dateFinished).sort((a, b) => b.dateFinished.localeCompare(a.dateFinished)).slice(0, 12);
   const goal = getState().goal;
@@ -90,6 +92,11 @@ export function homeView() {
         <div class="stat"><div class="v">${tbr.length}</div><div class="l">In the pile</div></div>
       </div>
     </section>
+
+    ${upcoming.length ? `<section>
+      <div class="section-head"><h2 class="h2">Coming soon</h2><a href="#/library/upcoming">See all ${upcoming.length}</a></div>
+      <div class="reading-list">${upcoming.slice(0, 2).map((b) => upcomingCard(b)).join('')}</div>
+    </section>` : ''}
 
     ${tbr.length ? `<section>
       <div class="section-head"><h2 class="h2">Up next</h2><a href="#/library/tbr">See all ${tbr.length}</a></div>

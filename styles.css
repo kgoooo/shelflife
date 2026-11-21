@@ -519,7 +519,8 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px
 .goal svg { width: 92px; height: 92px; flex-shrink: 0; }
 
 /* ---------- Library two-pane (unfolded) ---------- */
-.lib { display: grid; gap: 20px; grid-template-columns: 1fr; }
+.lib { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); }
+.lib-list, .lib-detail { min-width: 0; }
 .lib .lib-detail { display: none; }
 .lib.has-detail .lib-list { display: none; }
 .lib.has-detail .lib-detail { display: block; }
@@ -740,3 +741,73 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px
 .preview-actions { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; }
 .preview-stats { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
 .preview-stats b { color: var(--text); font-weight: 600; }
+
+/* Five status buttons fit the folded screen */
+.status-pick { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.status-pick button { font-size: 12.5px; padding: 0 2px; }
+
+/* ---------- Release countdown ---------- */
+.upcoming-list { display: grid; gap: 12px; grid-template-columns: 1fr; }
+@media (min-width: 700px) { .lib:not(.has-detail) .upcoming-list { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); } }
+.upcoming-card { display: flex; gap: 14px; align-items: stretch; }
+.upcoming-card > a:first-child { width: 78px; flex-shrink: 0; }
+.upcoming-card .cover { font-size: 9px; }
+.upcoming-card .info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.upcoming-card .t { font-family: var(--display); font-weight: 650; font-size: 17px; line-height: 1.1; }
+.upcoming-card.selected { border-color: var(--light); }
+.countdown { margin-top: 8px; }
+.cd-cells { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.cd-cell {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 8px 4px 7px;
+  border-radius: 10px;
+  background: rgba(0,0,0,.35);
+  border: 1px solid var(--line);
+}
+.cd-cell b {
+  font-family: var(--display);
+  font-weight: 800;
+  font-variation-settings: "wdth" 115;
+  font-size: 26px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.cd-cell span { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--faint); margin-top: 4px; }
+.cd-cell.zero b { color: var(--faint); }
+.cd-bar { height: 3px; border-radius: 3px; background: var(--surface-3); margin-top: 10px; overflow: hidden; }
+.cd-bar i { display: block; height: 100%; background: var(--rose); border-radius: 3px; }
+.cd-foot { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--faint); margin-top: 6px; }
+.countdown.big .cd-cells { gap: 10px; }
+.countdown.big .cd-cell { padding: 16px 6px 12px; border-radius: 14px; }
+.countdown.big .cd-cell b { font-size: clamp(40px, 12vw, 64px); }
+.countdown.big .cd-cell span { font-size: 11px; }
+.countdown.big .cd-foot { font-size: 13px; }
+.countdown.tba span { font-size: 13px; color: var(--muted); }
+.countdown.out { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.countdown.out .out-label { font-family: var(--display); font-weight: 800; font-variation-settings: "wdth" 115; text-transform: uppercase; font-size: 22px; color: var(--rose); letter-spacing: -0.02em; }
+.countdown.big.out .out-label { font-size: 40px; }
+
+/* ---------- Series ---------- */
+.series-link { color: var(--rose); font-size: 13px; font-weight: 600; letter-spacing: .01em; }
+.series-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.series-list { display: flex; flex-direction: column; }
+.series-row { display: flex; gap: 14px; align-items: center; padding: 14px 0; border-top: 1px solid var(--line); }
+.series-row:last-child { border-bottom: 1px solid var(--line); }
+.series-num {
+  width: 44px; flex-shrink: 0;
+  font-family: var(--display); font-weight: 800; font-variation-settings: "wdth" 118;
+  font-size: 30px; letter-spacing: -0.04em; line-height: 1;
+  color: var(--faint);
+}
+.series-row.owned .series-num { color: var(--light); }
+.series-row .cover { width: 62px; font-size: 7px; }
+.series-row .info { flex: 1; min-width: 0; }
+.series-row .t { font-weight: 600; line-height: 1.25; display: block; }
+
+/* Cover picker */
+.cover-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 12px; }
+.cover-choice { padding: 0; border: 0; background: none; cursor: pointer; border-radius: 10px; }
+.cover-choice .cover { width: 100%; }
+.cover-choice.on .cover { outline: 2px solid var(--light); outline-offset: 3px; }

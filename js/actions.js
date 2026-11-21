@@ -1,23 +1,25 @@
 import * as store from './store.js';
-import { toast, openSheet, closeSheet } from './ui.js';
+import { toast, openSheet, closeSheet, esc } from './ui.js';
 import { tropeSheetBody, warningSheetBody, infoSheetBody } from './views/book.js';
 import { libFilters } from './views/library.js';
 import { pickFilters, matchingTbr } from './views/discover.js';
 import { resultCache } from './views/add.js';
 import { openPreview, getDetails, refreshPreviewActions } from './views/preview.js';
 import { sampleLibrary } from './sample.js';
+import { openCoverPicker, setCover } from './covers.js';
 
 const rerender = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
 
 async function addFromResult(key, status) {
   const r = resultCache.get(key);
-  if (!r || store.findByOlKey(key)) return;
-  const b = store.addBook({ ...r, status });
-  toast(`Added to ${status === 'tbr' ? 'your pile' : status === 'reading' ? 'reading' : 'read'}`);
+  if (!r || store.findByKey(key)) return;
+  const { seriesKeyList, positions, key: _k, rating, olCover, ...fields } = r;
+  const b = store.addBook({ ...fields, status, seriesChecked: !!r.olKey });
+  toast({ tbr: 'Added to your pile', reading: 'Added to reading', read: 'Added to read', upcoming: b.releaseDate ? 'Added to Upcoming' : 'Added to Upcoming. Set its release date.' }[status]);
   refreshPreviewActions();
   const extra = await getDetails(key);
   const patch = {};
-  if (extra.description) patch.description = extra.description;
+  if (extra.description && !b.description) patch.description = extra.description;
   if (!b.subjects.length && extra.subjects?.length) patch.subjects = extra.subjects.slice(0, 25);
   if (Object.keys(patch).length) store.updateBook(b.id, patch);
 }
@@ -48,6 +50,26 @@ function download(name, text) {
   a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function manualAddSheet(d = {}) {
+  const upcoming = d.v === 'upcoming';
+  const opt = (v, l) => `<option value="${v}" ${d.v === v ? 'selected' : ''}>${l}</option>`;
+  openSheet(upcoming ? 'Add an upcoming book' : 'Add manually', `<form class="stack" data-form="manual">
+    <label class="field">Title<input class="input" name="title" required></label>
+    <label class="field">Author(s)<input class="input" name="authors" value="${esc(d.author || '')}"></label>
+    <div class="dates">
+      <label class="field">Series<input class="input" name="series" value="${esc(d.series || '')}"></label>
+      <label class="field">Book #<input class="input" name="seriesNum" inputmode="decimal" value="${esc(d.series ? d.num || '' : '')}"></label>
+    </div>
+    <input type="hidden" name="seriesKey" value="${esc(d.seriesKey || '')}">
+    <div class="dates">
+      <label class="field">Shelf<select class="input" name="status">${opt('tbr', 'To read')}${opt('reading', 'Reading')}${opt('read', 'Read')}${opt('upcoming', 'Upcoming')}</select></label>
+      <label class="field">Pages<input class="input" name="pages" type="number" inputmode="numeric"></label>
+    </div>
+    <label class="field">Release date${upcoming ? '' : ' (if it\'s not out yet)'}<input class="input" name="releaseDate" type="date"></label>
+    <button class="btn btn-light" type="submit">Add book</button>
+  </form>`, (root) => root.querySelector('input').focus());
 }
 
 export function handleAction(e) {
@@ -84,6 +106,8 @@ export function handleAction(e) {
       document.querySelector('#sheet [data-picker-q]').value = ''; refreshSheet('warning', id); break;
 
     case 'edit-info': openSheet('Edit details', infoSheetBody(b)); break;
+    case 'pick-cover': openCoverPicker(id); break;
+    case 'set-cover': setCover(id, v); break;
     case 'delete':
       if (confirm(`Remove “${b.title}” from your library? This can't be undone.`)) {
         store.removeBook(id);
@@ -95,17 +119,7 @@ export function handleAction(e) {
     case 'add-result': addFromResult(el.dataset.key, v); break;
     case 'preview': openPreview(el.dataset.key); break;
     case 'retry-shelf': rerender(); break;
-    case 'manual-add':
-      openSheet('Add manually', `<form class="stack" data-form="manual">
-        <label class="field">Title<input class="input" name="title" required></label>
-        <label class="field">Author(s)<input class="input" name="authors"></label>
-        <div class="dates">
-          <label class="field">Pages<input class="input" name="pages" type="number" inputmode="numeric"></label>
-          <label class="field">Shelf<select class="input" name="status"><option value="tbr">To read</option><option value="reading">Reading</option><option value="read">Read</option></select></label>
-        </div>
-        <button class="btn btn-light" type="submit">Add book</button>
-      </form>`, (root) => root.querySelector('input').focus());
-      break;
+    case 'manual-add': manualAddSheet(el.dataset); break;
 
     case 'pick-mood':
       pickFilters.moods = pickFilters.moods.includes(v) ? pickFilters.moods.filter((m) => m !== v) : [...pickFilters.moods, v];
@@ -145,6 +159,7 @@ export function handleChange(e) {
       else store.updateBook(id, { progress: p });
       break;
     }
+    case 'releaseDate': store.updateBook(id, { releaseDate: val || null }); break;
     case 'dateStarted': case 'dateFinished': case 'notes':
       store.updateBook(id, { [change]: val || (change === 'notes' ? '' : null) }); break;
     case 'format': store.updateBook(id, { format: val || null }); break;
@@ -188,7 +203,12 @@ export function handleSubmit(e) {
   const fd = Object.fromEntries(new FormData(form));
   const authors = (fd.authors || '').split(',').map((s) => s.trim()).filter(Boolean);
   if (form.dataset.form === 'manual') {
-    const b = store.addBook({ title: fd.title.trim(), authors, pages: +fd.pages || null, status: fd.status });
+    const releaseDate = fd.releaseDate || null;
+    const status = releaseDate && releaseDate > store.today() && fd.status === 'tbr' ? 'upcoming' : fd.status;
+    const b = store.addBook({
+      title: fd.title.trim(), authors, pages: +fd.pages || null, status, releaseDate,
+      series: fd.series.trim(), seriesNum: fd.seriesNum.trim(), seriesKey: fd.seriesKey || null, seriesChecked: true,
+    });
     closeSheet();
     toast(`Added “${b.title}”`);
     location.hash = `#/book/${b.id}`;
@@ -196,6 +216,7 @@ export function handleSubmit(e) {
     store.updateBook(form.dataset.id, {
       title: fd.title.trim(), authors, series: fd.series.trim(), seriesNum: fd.seriesNum.trim(),
       pages: +fd.pages || null, year: +fd.year || null, cover: fd.cover.trim() || null,
+      releaseDate: fd.releaseDate || null,
     });
     closeSheet();
     toast('Saved');

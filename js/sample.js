@@ -40,5 +40,11 @@ export function sampleLibrary() {
     progress: status === 'read' ? pages : progress || 0,
     description: 'Sample book: made up so you can explore the app.',
   }));
+  books.push(
+    newBook({ title: 'Ashes of the Fae Court', authors: ['Mara Quill'], series: 'Court of Ash', seriesNum: '3', status: 'upcoming', releaseDate: `${Y + 1}-03-17`, dateAdded: d(9, 1), tropes: ['Romantasy', 'Enemies to lovers'], spice: 4 }),
+    newBook({ title: 'Sudden Death', authors: ['Jess Harlow'], series: 'Off-Ice', seriesNum: '4', status: 'upcoming', releaseDate: `${Y + 2}-01-06`, dateAdded: d(10, 15), tropes: ['Hockey romance'] }),
+    newBook({ title: 'Moonlit Marsh: Book Two', authors: ['Cass Rowan'], status: 'upcoming', releaseDate: null, dateAdded: d(11, 1) }),
+  );
+  books.forEach((b) => { b.seriesChecked = true; b.coverChecked = true; }); // made-up books: nothing to look up
   return { goal: 30, books, customTropes: [], customWarnings: [] };
 }

@@ -1,16 +1,17 @@
-import { searchBooks } from '../api.js';
-import { findByOlKey } from '../store.js';
-import { esc, icons, coverHTML, authorLine } from '../ui.js';
+import { findBooks } from '../api.js';
+import { findByKey } from '../store.js';
+import { esc, icons, coverHTML, authorLine, fmtDate } from '../ui.js';
 
+const today = () => new Date().toISOString().slice(0, 10);
 let lastQuery = '';
 let lastResults = [];
 let controller;
-export const resultCache = new Map(); // olKey -> search result, used when adding
+export const resultCache = new Map(); // result key -> search result, used when adding
 
 export function addView() {
   return `<div class="stack" style="max-width:720px;margin:0 auto">
     <h1 class="h1">Add a book</h1>
-    <p class="muted small" style="margin:0">Search millions of titles from Open Library, or add one by hand.</p>
+    <p class="muted small" style="margin:0">Search Apple Books and Open Library, including books that aren't out yet.</p>
     <div class="search-wrap">${icons.search}<input class="input" id="add-q" type="search" placeholder="Title, author or ISBN" value="${esc(lastQuery)}" autocomplete="off" enterkeyhint="search" aria-label="Search books"></div>
     <div id="add-results" class="stack" style="gap:4px"></div>
     <div class="divider"></div>
@@ -19,19 +20,23 @@ export function addView() {
 }
 
 function resultRow(r) {
-  resultCache.set(r.olKey, r);
-  const owned = findByOlKey(r.olKey);
+  resultCache.set(r.key, r);
+  const owned = findByKey(r.key);
   return `<div class="result">
-    <button class="tile-link" data-action="preview" data-key="${esc(r.olKey)}" aria-label="More about ${esc(r.title)}" style="width:56px">${coverHTML(r)}</button>
+    <button class="tile-link" data-action="preview" data-key="${esc(r.key)}" aria-label="More about ${esc(r.title)}" style="width:56px">${coverHTML(r)}</button>
     <div class="info">
-      <button class="tile-link t" data-action="preview" data-key="${esc(r.olKey)}">${esc(r.title)}</button>
+      <button class="tile-link t" data-action="preview" data-key="${esc(r.key)}">${esc(r.title)}</button>
       <div class="a">${authorLine(r)}${r.year ? ` · ${r.year}` : ''}${r.pages ? ` · ${r.pages} pp` : ''}</div>
+      ${r.seriesKey ? `<a class="series-link small" href="#/series/${esc(r.seriesKey)}">${r.seriesNum ? `Book ${esc(r.seriesNum)} · ` : ''}${esc(r.series)} <span aria-hidden="true">→</span></a>` : ''}
       <div class="actions" style="margin-top:8px">
         ${owned
           ? `<a class="in-lib" href="#/book/${owned.id}">✓ In your library</a>`
-          : `<button class="btn btn-sm" style="padding:0 10px" data-action="add-result" data-key="${esc(r.olKey)}" data-v="tbr">+ To read</button>
-             <button class="btn btn-sm btn-ghost" style="padding:0 10px" data-action="add-result" data-key="${esc(r.olKey)}" data-v="reading">Reading</button>
-             <button class="btn btn-sm btn-ghost" style="padding:0 10px" data-action="add-result" data-key="${esc(r.olKey)}" data-v="read">Read</button>`}
+          : r.releaseDate > today()
+          ? `<span class="tag rose">Out ${fmtDate(r.releaseDate)}</span>
+             <button class="btn btn-sm" style="padding:0 10px" data-action="add-result" data-key="${esc(r.key)}" data-v="upcoming">+ Upcoming</button>`
+          : `<button class="btn btn-sm" style="padding:0 10px" data-action="add-result" data-key="${esc(r.key)}" data-v="tbr">+ To read</button>
+             <button class="btn btn-sm btn-ghost" style="padding:0 10px" data-action="add-result" data-key="${esc(r.key)}" data-v="reading">Reading</button>
+             <button class="btn btn-sm btn-ghost" style="padding:0 10px" data-action="add-result" data-key="${esc(r.key)}" data-v="read">Read</button>`}
       </div>
     </div>
   </div>`;
@@ -64,7 +69,7 @@ async function run(root, q) {
   controller = new AbortController();
   root.querySelector('#add-results').innerHTML = '<div class="center" style="padding:20px"><span class="loader"></span></div>';
   try {
-    lastResults = await searchBooks(q, { signal: controller.signal });
+    lastResults = await findBooks(q, { signal: controller.signal });
     paint(root);
   } catch (e) {
     if (e.name === 'AbortError') return;

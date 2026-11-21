@@ -8,6 +8,8 @@ import { addView, mountAdd } from './views/add.js';
 import { discoverView, mountDiscover } from './views/discover.js';
 import { statsView } from './views/stats.js';
 import { settingsView } from './views/settings.js';
+import { seriesView } from './views/series.js';
+import { backfillCovers } from './covers.js';
 import { handleAction, handleChange, handleInput, handleSubmit } from './actions.js';
 
 const view = document.getElementById('view');
@@ -39,7 +41,7 @@ export function render() {
   const paneScroll = pane?.scrollTop || 0;
   const winScroll = window.scrollY;
 
-  renderNav(section === 'book' ? 'library' : section);
+  renderNav(section === 'book' || section === 'series' ? 'library' : section);
   let html = '';
   let mount;
   switch (section) {
@@ -49,6 +51,7 @@ export function render() {
     case 'discover': html = discoverView(); mount = mountDiscover; break;
     case 'stats': html = statsView(a); break;
     case 'settings': html = settingsView(); break;
+    case 'series': html = seriesView(a, b); break;
     default: html = homeView();
   }
   // The add screen keeps its own live search box; don't wipe it on data changes.
@@ -60,6 +63,8 @@ export function render() {
     mountAdd(view, { refresh: true });
   }
   wireCharts(view);
+  const activeTab = view.querySelector('.tabs .on');
+  if (activeTab) activeTab.parentElement.scrollLeft = activeTab.offsetLeft - 8;
 
   if (sameRoute) {
     window.scrollTo(0, winScroll);
@@ -83,6 +88,7 @@ document.addEventListener('submit', (e) => handleSubmit(e));
 window.addEventListener('hashchange', render);
 subscribe(render);
 render();
+setTimeout(backfillCovers, 1500);
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});

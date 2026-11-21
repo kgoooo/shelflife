@@ -1,4 +1,4 @@
-import { books, findByOlKey } from '../store.js';
+import { books, findByKey } from '../store.js';
 import { MOODS, SPICE, TROPE_SUBJECTS, PACES } from '../data.js';
 import { bySubject, byAuthor } from '../api.js';
 import { esc, icons, coverHTML, authorLine, spiceInline } from '../ui.js';
@@ -108,13 +108,13 @@ function load(key) {
 }
 
 function suggestionTile(r) {
-  resultCache.set(r.olKey, r);
+  resultCache.set(r.key, r);
   return `<div class="book-tile">
-    <button class="tile-link" data-action="preview" data-key="${esc(r.olKey)}" aria-label="More about ${esc(r.title)}">
+    <button class="tile-link" data-action="preview" data-key="${esc(r.key)}" aria-label="More about ${esc(r.title)}">
       ${coverHTML(r)}
       <div><div class="t">${esc(r.title)}</div><div class="a">${authorLine(r)}</div></div>
     </button>
-    <button class="btn btn-sm" style="padding:0 10px" data-action="add-result" data-key="${esc(r.olKey)}" data-v="tbr">+ To read</button>
+    <button class="btn btn-sm" style="padding:0 10px" data-action="add-result" data-key="${esc(r.key)}" data-v="tbr">+ To read</button>
   </div>`;
 }
 
@@ -127,7 +127,7 @@ export function mountDiscover(root) {
       el.innerHTML = `<div class="row small faint" style="padding:0 4px">Open Library didn't answer. <button class="btn btn-sm" style="padding:0 12px" data-action="retry-shelf">Try again</button></div>`;
       return;
     }
-    const fresh = results.filter((r) => !findByOlKey(r.olKey) && !ownedTitles.has(r.title.toLowerCase())).slice(0, 16);
+    const fresh = results.filter((r) => !findByKey(r.key) && !ownedTitles.has(r.title.toLowerCase())).slice(0, 16);
     if (!fresh.length && el.dataset.shelf.startsWith('author:')) { el.closest('section').remove(); return; }
     el.innerHTML = fresh.length ? fresh.map(suggestionTile).join('') : '<p class="faint small" style="padding:0 4px">You already have everything here.</p>';
   });

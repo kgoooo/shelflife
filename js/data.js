@@ -5,6 +5,7 @@ export const STATUSES = [
   { id: 'tbr', label: 'To read' },
   { id: 'read', label: 'Read' },
   { id: 'dnf', label: 'DNF' },
+  { id: 'upcoming', label: 'Upcoming' },
 ];
 
 export const SPICE = [
