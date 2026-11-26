@@ -856,3 +856,17 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px
   border: 1px solid rgba(185,167,133,.3);
 }
 .suggest-note svg, .detail-section h3 svg { color: var(--sand); flex-shrink: 0; vertical-align: -2px; }
+
+/* Discover suggestions */
+.book-tile.suggestion { position: relative; }
+.book-tile .dismiss {
+  position: absolute; top: 6px; right: 6px; z-index: 4;
+  display: grid; place-items: center;
+  width: 26px; height: 26px; padding: 0;
+  border: 0; border-radius: 8px;
+  background: rgba(10,10,10,.7); color: var(--muted);
+  cursor: pointer; opacity: .85;
+}
+.book-tile .dismiss svg { width: 14px; height: 14px; }
+.book-tile .dismiss:hover { color: var(--text); opacity: 1; }
+.book-tile .reason { font-size: 11.5px; color: var(--rose); line-height: 1.25; margin-top: -2px; }

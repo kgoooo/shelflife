@@ -7,6 +7,7 @@ const defaults = () => ({
   books: [],
   customTropes: [],
   customWarnings: [],
+  dismissed: [], // Discover suggestions you said no to (title|author)
 });
 
 let state = load();
@@ -140,6 +141,14 @@ export function removeBook(id) {
   state.books = state.books.filter((b) => b.id !== id);
   persist();
 }
+
+// Saved quietly (no re-render) so the Discover rows don't jump while you dismiss things.
+export function dismissSuggestion(id) {
+  if (state.dismissed.includes(id)) return;
+  state.dismissed.push(id);
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* storage full */ }
+}
+export function clearDismissed() { state.dismissed = []; persist(); }
 
 export function setGoal(n) { state.goal = Math.max(1, n | 0); persist(); }
 

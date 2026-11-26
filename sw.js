@@ -1,5 +1,5 @@
 // Offline support: app files are cached on install; covers and fonts are cached as you browse.
-const VERSION = 'shelflife-v9';
+const VERSION = 'shelflife-v10';
 const APP_FILES = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/app.js', 'js/actions.js', 'js/api.js', 'js/autotag.js', 'js/charts.js', 'js/covers.js', 'js/data.js', 'js/sample.js', 'js/store.js', 'js/ui.js',

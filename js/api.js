@@ -132,6 +132,7 @@ const APPLE = 'https://itunes.apple.com/search';
 const JUNK = /\b(summary|study guide|workbook|analysis|after reading|sparknotes|cliffsnotes|book companion|trivia|quiz|coloring book)\b/i;
 
 export const norm = (s) => String(s || '').toLowerCase()
+  .replace(/&/g, ' and ')               // "The Serpent & the Wings of Night" = "…and the…"
   .replace(/\s*[:(\[].*$/, '')        // drop subtitles / "(Book 2)"
   .replace(/^(the|a|an)\s+/, '')
   .replace(/[^a-z0-9]/g, '');
@@ -188,11 +189,13 @@ export async function appleSearch(term, { limit = 25, signal, audio = false } = 
     .map(fromApple);
 }
 
-const sameBook = (a, b) => norm(a.title) === norm(b.title) && lastName(a.authors[0]) === lastName(b.authors[0]);
+export const sameBook = (a, b) => norm(a.title) === norm(b.title) && lastName(a.authors[0]) === lastName(b.authors[0]);
 
 // How well a result matches what was typed: title words count most, then author words.
 const STOP = new Set(['the', 'a', 'an', 'of', 'and', 'by', 'to', 'in', 'on', 'for']);
-const looksTranslated = (t) => /[^\x00-\x7F‘’“”–—…]/.test(t)
+export const looksTranslated = (t) => /[^\x00-\x7F‘’“”–—…]/.test(t)
+  || /\b(edición|edizione|ausgabe|édition|version française|tome \d)\b/i.test(t)
+  || /\b(las|los|del|una|con|nel|della|delle|des|und|mit|eine?|och|het|een|nas|dos)\b/i.test(t)
   || /^(la|le|les|el|los|las|il|der|die|das|den|det|wenn|o|os|een|het)\s/i.test(t);
 
 function matchScore(r, q) {
@@ -376,4 +379,36 @@ export async function coverOptions(title, author) {
 export async function olMatch(title, author) {
   const list = await searchBooks(`${title} ${author || ''}`, { limit: 8, signal: withTimeout(15000) });
   return list.find((o) => sameBook(o, { title, authors: [author] })) || null;
+}
+
+/* ---------------- Popular books by subject (Discover) ---------------- */
+// Open Library can sort a subject by how many readers have shelved each book ("readinglog")
+// or by what's being shelved lately ("trending"), which surfaces well-known books rather
+// than whatever happens to have the keyword in its title.
+export async function popularBySubjects(phrases, { sort = 'readinglog', limit = 40 } = {}) {
+  const q = phrases.map((p) => `subject:"${p}"`).join(' OR ');
+  const fields = `${SEARCH_FIELDS},want_to_read_count,language`;
+  const url = `${OL}/search.json?q=${encodeURIComponent(q)}&sort=${sort}&fields=${fields}&limit=${limit}`;
+  const res = await fetch(url, { signal: withTimeout(20000) });
+  if (!res.ok) throw new Error('Open Library failed');
+  const data = await res.json();
+  return (data.docs || [])
+    .filter((d) => !d.language || d.language.includes('eng'))
+    .map((d) => ({ ...fromSearchDoc(d), popularity: d.want_to_read_count || 0 }));
+}
+
+// Not novels: box sets, omnibus listings, journals and non-fiction.
+export const notANovel = (r) =>
+  /box(ed)? set|collection set|\bbundle\b|books? \d+\s*[-–]\s*\d+|\s\/\s.*\s\/\s|journal\b|cookbook|coloring|companion\b|\bbible\b/i.test(r.title)
+  || /\bnon-?fiction\b|self-improvement|self-development|self-help|\bpsychology\b|\breference\b|cookbooks|business & personal finance|religion & spirituality|study aids|family & relationships|health, mind & body/i.test((r.subjects || []).join(' '));
+
+// Is a blurb written in another language? Compares common English words with common
+// Spanish / French / German / Italian / Portuguese ones.
+const EN_WORDS = /\b(the|and|of|to|her|his|she|he|is|with|that|for|but|when|who)\b/gi;
+const OTHER_WORDS = /\b(el|la|los|las|que|y|en|un|una|del|por|para|con|le|les|et|est|une|dans|der|die|das|und|ist|nicht|il|della|che|di|não|uma|ele|ela)\b/gi;
+export function foreignBlurb(text) {
+  if (!text || text.length < 60) return false;
+  const en = (text.match(EN_WORDS) || []).length;
+  const other = (text.match(OTHER_WORDS) || []).length;
+  return other > en * 1.5 && other >= 5;
 }

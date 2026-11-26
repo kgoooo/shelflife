@@ -194,6 +194,16 @@ export function handleAction(e) {
     }
     case 'keep-suggestions': store.updateBook(id, { suggested: null }); break;
     case 'undo-suggestions': store.updateBook(id, undoSuggestions(b)); toast('Suggestions removed'); break;
+    case 'dismiss-suggestion': {
+      store.dismissSuggestion(v);
+      const tile = el.closest('.book-tile');
+      const row = tile?.parentElement;
+      tile?.remove();
+      if (row && !row.children.length) row.closest('section')?.remove();
+      toast('Got it, you won\'t see that one again');
+      break;
+    }
+    case 'clear-dismissed': store.clearDismissed(); toast('Hidden suggestions are back'); break;
     case 'open-after-dark': openUnlock(); break;
     case 'lock-after-dark': store.lock(); toast('After Dark locked'); break;
     case 'change-pin': openPinSetup(null, true); break;
