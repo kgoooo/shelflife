@@ -4,6 +4,7 @@ import { findByKey, isUnlocked } from '../store.js';
 import { TROPES, TROPE_SUBJECTS } from '../data.js';
 import { esc, coverHTML, openSheet, starsInline, fmtDate } from '../ui.js';
 import { resultCache } from './add.js';
+import { seriesCountLabel } from './series.js';
 
 const detailCache = new Map(); // result key -> Promise<{description, subjects, ratings}>
 
@@ -74,7 +75,7 @@ export function openPreview(key) {
         <div class="muted">${esc(r.authors.join(', ') || 'Unknown author')}</div>
         <div class="small faint">${[isFuture(r.releaseDate) ? null : r.year, r.pages ? `${r.pages} pages` : null].filter(Boolean).join(' · ')}</div>
         ${isFuture(r.releaseDate) ? `<span class="tag rose" style="align-self:flex-start">Comes out ${fmtDate(r.releaseDate)}</span>` : ''}
-        ${r.seriesKey ? `<a class="series-link" href="#/series/${esc(r.seriesKey)}" data-close>${r.seriesNum ? `Book ${esc(r.seriesNum)} · ` : ''}${esc(r.series)} · See the series <span aria-hidden="true">→</span></a>` : ''}
+        ${r.seriesKey ? `<a class="series-link" href="#/series/${esc(r.seriesKey)}" data-close>${r.seriesNum ? `${esc(seriesCountLabel(r.seriesNum, r.seriesKey))} · ` : ''}${esc(r.series)} · See the series <span aria-hidden="true">→</span></a>` : ''}
       </div>
     </div>
     <div data-preview-actions="${esc(key)}">${actionsHTML(key)}</div>

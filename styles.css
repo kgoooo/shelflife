@@ -870,3 +870,54 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px
 .book-tile .dismiss svg { width: 14px; height: 14px; }
 .book-tile .dismiss:hover { color: var(--text); opacity: 1; }
 .book-tile .reason { font-size: 11.5px; color: var(--rose); line-height: 1.25; margin-top: -2px; }
+
+/* Series card on a book's page */
+.series-card {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.series-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.series-card-head > span:first-child { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.series-card-name {
+  font-family: var(--display); font-weight: 700; font-variation-settings: "wdth" 104;
+  font-size: 18px; line-height: 1.15; letter-spacing: -0.01em;
+}
+.series-card-go { flex-shrink: 0; font-size: 13px; font-weight: 600; color: var(--rose); white-space: nowrap; }
+.series-card-head:hover .series-card-name { text-decoration: underline; text-decoration-color: var(--faint); text-underline-offset: 4px; }
+.series-strip {
+  display: flex; gap: 8px;
+  overflow-x: auto; scrollbar-width: none;
+  padding: 2px 2px 4px;
+}
+.series-strip::-webkit-scrollbar { display: none; }
+.strip-item {
+  position: relative; flex: 0 0 52px;
+  padding: 0; border: 0; background: none; cursor: pointer;
+  border-radius: 6px;
+  opacity: .72; transition: opacity .15s, transform .15s;
+}
+.strip-item .cover { width: 52px; font-size: 6px; }
+.strip-item:hover { opacity: 1; transform: translateY(-2px); }
+.strip-item.current { opacity: 1; cursor: default; }
+.strip-item.current .cover { outline: 2px solid var(--light); outline-offset: 2px; }
+.strip-num {
+  position: absolute; left: 4px; bottom: 4px; z-index: 3;
+  min-width: 18px; height: 18px; padding: 0 4px;
+  display: grid; place-items: center;
+  border-radius: 5px;
+  background: rgba(10,10,10,.78); color: var(--text);
+  font-size: 10.5px; font-weight: 700;
+}
+.strip-done {
+  position: absolute; right: 4px; top: 4px; z-index: 3;
+  width: 16px; height: 16px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--sage); color: #101010; font-size: 10px; font-weight: 800;
+}
+.series-row { cursor: pointer; border-radius: 10px; transition: background .15s; }
+.series-row:hover { background: var(--surface); }
+.chip.genre.on { background: var(--sand-dim); border-color: var(--sand); color: #ece2cc; }
+.chip .count { font-size: 11px; opacity: .65; }

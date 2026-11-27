@@ -1,16 +1,17 @@
 import { books, getState } from '../store.js';
-import { MOODS, SPICE, TROPE_SUBJECTS, PACES } from '../data.js';
+import { MOODS, SPICE, TROPE_SUBJECTS, PACES, GENRES, genresOf, ROMANCE_SUBJECTS, readingGenres, PICKER_GENRE_ORDER } from '../data.js';
 import { bySeries, findBooks, foreignBlurb, googleKey, looksTranslated, norm, notANovel, popularBySubjects } from '../api.js';
 import { suggestTags } from '../autotag.js';
 import { esc, icons, coverHTML, authorLine, spiceInline, fmtDate } from '../ui.js';
 import { resultCache } from './add.js';
 
-export const pickFilters = { moods: [], minSpice: 0, maxSpice: 5, maxPages: 0, pace: '', pickId: null };
+export const pickFilters = { moods: [], genres: [], minSpice: 0, maxSpice: 5, maxPages: 0, pace: '', pickId: null };
 const cache = new Map(); // shelf id -> Promise<results>, for this session
 
 export function matchingTbr() {
   const f = pickFilters;
   return books().filter((b) => b.status === 'tbr'
+    && (!f.genres.length || f.genres.some((g) => readingGenres(b).includes(g)))
     && (!f.moods.length || f.moods.some((m) => b.moods.includes(m)))
     && (b.spice == null || (b.spice >= f.minSpice && b.spice <= f.maxSpice))
     && (!f.maxPages || !b.pages || b.pages <= f.maxPages)
@@ -45,7 +46,7 @@ function excluded() {
 
 function tasteProfile() {
   const all = getState().books.filter((b) => !b.private || books().includes(b));
-  const tropes = {}, moods = {}, authors = {};
+  const tropes = {}, moods = {}, authors = {}, genres = {};
   for (const b of all) {
     let w;
     if (b.status === 'dnf') w = -1.5;
@@ -54,6 +55,9 @@ function tasteProfile() {
     else w = 0.25;                                   // your to-read pile hints at taste too
     b.tropes.forEach((t) => { tropes[t] = (tropes[t] || 0) + w; });
     b.moods.forEach((m) => { moods[m] = (moods[m] || 0) + w; });
+    // Genres come from what you read outside romance; a romantasy book counts only a little toward "fantasy".
+    const romanceLed = b.tropes.length > 0 || ROMANCE_SUBJECTS.test((b.subjects || []).join(' '));
+    genresOf(b).forEach((g) => { genres[g] = (genres[g] || 0) + w * (romanceLed ? 0.35 : 1); });
     if (b.status === 'read' && b.rating >= 4) b.authors.slice(0, 1).forEach((a) => { authors[a] = (authors[a] || 0) + b.rating; });
   }
   const top = (o) => Object.entries(o).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([k]) => k);
@@ -64,7 +68,19 @@ function tasteProfile() {
   });
   const rated = all.filter((b) => b.status === 'read' || b.status === 'reading');
   const romanceReader = rated.length > 0 && rated.filter((b) => b.tropes.length || /romance/i.test((b.subjects || []).join(' '))).length >= rated.length / 2;
-  return { tropes, moods, topTropes: top(tropes), topAuthors: top(authors), series, romanceReader };
+  return { tropes, moods, genres, topTropes: top(tropes), topAuthors: top(authors), topGenres: top(genres), series, romanceReader };
+}
+
+// Genre rows: up to two genres you read (outside romance). If you don't have any yet,
+// one "something different" row picked from the moods you like, so Discover always has
+// at least one row that isn't romance.
+function genreRows(taste) {
+  const mine = taste.topGenres.slice(0, 2).map((g) => ({ genre: g, mine: true }));
+  if (mine.length) return mine;
+  const byMood = Object.entries(GENRES)
+    .map(([g, def]) => [g, def.mood.reduce((n, m) => n + Math.max(0, taste.moods[m] || 0), 0)])
+    .sort((a, b) => b[1] - a[1]);
+  return [{ genre: byMood[0][1] > 0 ? byMood[0][0] : 'Thriller', mine: false }];
 }
 
 const year = new Date().getFullYear();
@@ -83,7 +99,7 @@ function score(r, taste) {
   for (const m of est.moods) s += Math.max(-2, Math.min(2, taste.moods[m] || 0)) * 0.4;
   if (r.popularity) s += Math.log10(r.popularity + 1) * 0.9;            // readers who've shelved it
   else if (r.rating?.count) s += Math.log10(r.rating.count + 1) * 0.7;
-  if (taste.romanceReader && !/romance|love stories|romantasy|erotic|lovers/i.test(`${(r.subjects || []).join(' ')} ${(r.seedTropes || []).join(' ')}`)) s -= 4;
+  if (taste.romanceReader && r.subjects?.length && !ROMANCE_SUBJECTS.test(r.subjects.join(' '))) s -= 4;
   const y = r.year || 0;
   s += y >= year - 2 ? 1.2 : y >= year - 6 ? 0.6 : y && y < year - 25 ? -1 : 0;
   if (!r.cover) s -= 1;
@@ -139,6 +155,50 @@ function tropeCandidates(trope) {
   return cache.get(id);
 }
 
+const GENRE_PLURAL = {
+  Thriller: 'thrillers', Mystery: 'mysteries', Fantasy: 'fantasy', 'Science fiction': 'sci-fi', Horror: 'horror',
+  'Historical fiction': 'historical fiction', 'Literary fiction': 'literary fiction', 'Contemporary fiction': 'contemporary fiction',
+  'Young adult': 'young adult', Memoir: 'memoirs',
+};
+
+// Popular books in a genre with romance-led books left out.
+function genreCandidates(genre) {
+  const id = `genre:${genre}`;
+  if (!cache.has(id)) {
+    const { subjects } = GENRES[genre];
+    cache.set(id, Promise.allSettled([
+      popularBySubjects(subjects, { sort: 'readinglog', limit: 50 }),
+      popularBySubjects(subjects, { sort: 'trending', limit: 25 }),
+    ]).then((res) => {
+      if (res.every((x) => x.status === 'rejected')) throw new Error('offline');
+      // No romance-led books, and (outside the young adult row) no children's books.
+      const kids = /juvenile|children'?s|picture books?|fairy tales|readers \(|middle grade|stories in rhyme/i;
+      return res.flatMap((x) => x.value || [])
+        .filter((r) => !ROMANCE_SUBJECTS.test((r.subjects || []).join(' ')))
+        .filter((r) => genre === 'Young adult' || !kids.test((r.subjects || []).join(' ')));
+    }).catch((e) => { cache.delete(id); throw e; }));
+  }
+  return cache.get(id);
+}
+
+function scoreGenre(r, genre, taste) {
+  const est = suggestTags({ description: r.description || '', subjects: r.subjects || [] });
+  let s = 0;
+  const moods = est.moods.filter((m) => m !== 'Romantic' && m !== 'Steamy');
+  for (const m of moods) s += Math.max(-2, Math.min(2, taste.moods[m] || 0)) * 0.5;
+  // Stay on genre: a fantasy epic that's also tagged "suspense" shouldn't lead the thriller row.
+  const KIN = { Thriller: ['Mystery'], Mystery: ['Thriller'], Fantasy: ['Young adult'], 'Young adult': ['Fantasy'], Horror: ['Thriller'] };
+  const own = genresOf(r);
+  if (own.length && !own.includes(genre)) s -= 1.5;
+  s -= own.filter((g) => g !== genre && !(KIN[genre] || []).includes(g)).length * 0.9;
+  if (r.popularity) s += Math.log10(r.popularity + 1) * 1.1;
+  const y = r.year || 0;
+  s += y >= year - 3 ? 1.2 : y >= year - 10 ? 0.6 : y && y < year - 40 ? -1.8 : 0;
+  if (!r.cover) s -= 1;
+  const liked = moods.filter((m) => (taste.moods[m] || 0) > 0).slice(0, 1);
+  return { ...r, score: s, reasons: [genre, ...liked] };
+}
+
 function authorCandidates(author) {
   const id = `author:${author}`;
   if (!cache.has(id)) {
@@ -152,6 +212,17 @@ function nextInSeries(seriesKey, after) {
   const id = `series:${seriesKey}`;
   if (!cache.has(id)) cache.set(id, bySeries(seriesKey).catch((e) => { cache.delete(id); throw e; }));
   return cache.get(id).then((list) => list.filter((r) => parseFloat(r.seriesNum) > after));
+}
+
+// Genre chips for the picker: only genres that books in your pile actually have, with counts.
+function genreChips(tbr) {
+  const counts = {};
+  tbr.forEach((b) => readingGenres(b).forEach((g) => { counts[g] = (counts[g] || 0) + 1; }));
+  const genres = PICKER_GENRE_ORDER.filter((g) => counts[g] || pickFilters.genres.includes(g));
+  if (!genres.length) return '';
+  return `<div class="eyebrow" style="margin-bottom:8px">Genre</div>
+    <div class="row-wrap" style="margin-bottom:16px">${genres.map((g) =>
+      `<button class="chip genre ${pickFilters.genres.includes(g) ? 'on' : ''}" data-action="pick-genre" data-v="${esc(g)}">${esc(g)} <span class="count">${counts[g] || 0}</span></button>`).join('')}</div>`;
 }
 
 export function discoverView() {
@@ -176,6 +247,7 @@ export function discoverView() {
     <section class="card picker-card stack">
       <div class="spread"><h2 class="h2">What should I read next?</h2><span class="small faint">${matches.length} of ${tbr.length} match</span></div>
       <div>
+        ${genreChips(tbr)}
         <div class="eyebrow" style="margin-bottom:8px">In the mood for</div>
         <div class="row-wrap">${MOODS.map((m) => `<button class="chip mood ${f.moods.includes(m) ? 'on' : ''}" data-action="pick-mood" data-v="${m}">${m}</button>`).join('')}</div>
       </div>
@@ -213,6 +285,9 @@ export function discoverView() {
     </section>
     ${shelf('picked', tropeShelves.length ? 'Picked for you' : 'Popular romance right now', tropeShelves.length ? 'From the tropes and moods you rate highest' : '')}
     ${hasSeries ? shelf('series', 'Next in your series') : ''}
+    ${genreRows(taste).map(({ genre, mine }) => shelf(`genre:${genre}`,
+      mine ? `Because you read <span style="color:var(--sage)">${esc(GENRE_PLURAL[genre] || genre.toLowerCase())}</span>` : `Something different: <span style="color:var(--sage)">${esc(GENRE_PLURAL[genre] || genre.toLowerCase())}</span>`,
+      mine ? 'Popular picks outside romance' : 'A break from romance, matched to the moods you like')).join('')}
     ${tropeShelves.map((t) => shelf(`trope:${t}`, `Because you love <span style="color:var(--rose)">${esc(t.toLowerCase())}</span>`)).join('')}
     ${taste.topAuthors.slice(0, 3).map((a) => shelf(`author:${a}`, `New &amp; more from ${esc(a)}`)).join('')}
 
@@ -239,6 +314,12 @@ function suggestionTile(r, { why } = {}) {
   </div>`;
 }
 
+// Keep rows varied: at most `n` books per author.
+function perAuthor(list, n) {
+  const count = {};
+  return list.filter((r) => { const a = lastName(r.authors?.[0]); count[a] = (count[a] || 0) + 1; return count[a] <= n; });
+}
+
 function fill(el, list, opts) {
   if (!el?.isConnected) return;
   if (!list.length) { el.closest('section').remove(); return; }
@@ -253,22 +334,38 @@ export async function mountDiscover(root) {
   const isOut = excluded();
   const get = (id) => root.querySelector(`[data-shelf="${CSS.escape(id)}"]`);
   const tropes = taste.topTropes.slice(0, 3);
+  genreRows(taste).forEach(({ genre }) => genreCandidates(genre).catch(() => {})); // start early, in parallel
 
   // Trope shelves + "Picked for you" (the best of all of them, so it fills once they load).
   const used = new Set();
   const lists = await Promise.all((tropes.length ? tropes : ['Romance']).map((t) =>
     (t === 'Romance' ? popularBySubjects(['romance', 'contemporary romance'], { sort: 'trending', limit: 40 }) : tropeCandidates(t))
-      .then((l) => clean(l, isOut).map((r) => score(r, taste)).sort((a, b) => b.score - a.score))
+      .then((l) => clean(l, isOut)
+        .filter((r) => !taste.romanceReader || !r.subjects?.length || ROMANCE_SUBJECTS.test(r.subjects.join(' ')))
+        .map((r) => score(r, taste)).sort((a, b) => b.score - a.score))
       .catch(() => null)));
   if (lists.every((l) => l === null)) { failed(get('picked')); tropes.forEach((t) => failed(get(`trope:${t}`))); }
   else {
-    const merged = clean(lists.flat().filter(Boolean).sort((a, b) => b.score - a.score), () => false).slice(0, 12);
+    const merged = perAuthor(clean(lists.flat().filter(Boolean).sort((a, b) => b.score - a.score), () => false), 2).slice(0, 12);
     merged.forEach((r) => used.add(bookId(r)));
     fill(get('picked'), merged);
     tropes.forEach((t, i) => {
       if (!lists[i]) return failed(get(`trope:${t}`));
-      fill(get(`trope:${t}`), lists[i].filter((r) => !used.has(bookId(r))).slice(0, 14));
+      fill(get(`trope:${t}`), perAuthor(lists[i].filter((r) => !used.has(bookId(r))), 2).slice(0, 14));
     });
+  }
+
+  // Genre rows (never romance). Filled in order so the second row doesn't repeat the first.
+  const genreUsed = new Set();
+  for (const { genre } of genreRows(taste)) {
+    const el = get(`genre:${genre}`);
+    try {
+      const l = await genreCandidates(genre);
+      const list = perAuthor(clean(l, isOut).filter((r) => !genreUsed.has(bookId(r)))
+        .map((r) => scoreGenre(r, genre, taste)).sort((a, b) => b.score - a.score), 1).slice(0, 14);
+      list.forEach((r) => genreUsed.add(bookId(r)));
+      fill(el, list);
+    } catch { failed(el); }
   }
 
   // Next in your series: the first book after the furthest one you've read or started.

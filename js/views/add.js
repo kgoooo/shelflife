@@ -1,4 +1,5 @@
 import { findBooks } from '../api.js';
+import { seriesCountLabel } from './series.js';
 import { findByKey, isUnlocked } from '../store.js';
 import { esc, icons, coverHTML, authorLine, fmtDate } from '../ui.js';
 
@@ -27,7 +28,7 @@ function resultRow(r) {
     <div class="info">
       <button class="tile-link t" data-action="preview" data-key="${esc(r.key)}">${esc(r.title)}</button>
       <div class="a">${authorLine(r)}${r.year && !(r.releaseDate > today()) ? ` · ${r.year}` : ''}${r.pages ? ` · ${r.pages} pp` : ''}</div>
-      ${r.seriesKey ? `<a class="series-link small" href="#/series/${esc(r.seriesKey)}">${r.seriesNum ? `Book ${esc(r.seriesNum)} · ` : ''}${esc(r.series)} <span aria-hidden="true">→</span></a>` : ''}
+      ${r.seriesKey ? `<a class="series-link small" href="#/series/${esc(r.seriesKey)}">${r.seriesNum ? `${esc(seriesCountLabel(r.seriesNum, r.seriesKey))} · ` : ''}${esc(r.series)} <span aria-hidden="true">→</span></a>` : ''}
       <div class="actions" style="margin-top:8px">
         ${owned
           ? owned.private && !isUnlocked() ? '<span class="in-lib">✓ In your library</span>' : `<a class="in-lib" href="#/book/${owned.id}">✓ In your library</a>`

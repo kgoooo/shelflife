@@ -405,7 +405,7 @@ export const notANovel = (r) =>
 // Is a blurb written in another language? Compares common English words with common
 // Spanish / French / German / Italian / Portuguese ones.
 const EN_WORDS = /\b(the|and|of|to|her|his|she|he|is|with|that|for|but|when|who)\b/gi;
-const OTHER_WORDS = /\b(el|la|los|las|que|y|en|un|una|del|por|para|con|le|les|et|est|une|dans|der|die|das|und|ist|nicht|il|della|che|di|não|uma|ele|ela)\b/gi;
+const OTHER_WORDS = /\b(el|la|los|las|que|y|en|un|una|del|por|para|con|le|les|et|est|une|dans|der|die|das|und|ist|nicht|il|della|che|di|não|uma|ele|ela|je|se|na|že|ale|és|az|egy|hogy|nem|się|nie|jest|och|att|det|som|og|er|ikke)\b/gi;
 export function foreignBlurb(text) {
   if (!text || text.length < 60) return false;
   const en = (text.match(EN_WORDS) || []).length;

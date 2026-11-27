@@ -1,7 +1,7 @@
 import { getVisibleBook, getState, isUnlocked } from '../store.js';
 import { STATUSES, SPICE, MOODS, PACES, FORMATS, SEVERITY, TROPE_GROUPS, WARNINGS } from '../data.js';
 import { esc, icons, coverHTML, starSvg, flameSvg, countdownHTML } from '../ui.js';
-import { ensureSeries, seriesHref } from './series.js';
+import { ensureSeries, seriesHref, seriesCard } from './series.js';
 import { ensureCover } from '../covers.js';
 
 export function bookPage(id) {
@@ -67,7 +67,7 @@ export function bookDetail(b, backHref) {
   ensureSeries(b);
   ensureCover(b);
   const series = b.series
-    ? `<a class="series-link" href="${seriesHref(b)}">${b.seriesNum ? `Book ${esc(b.seriesNum)} · ` : ''}${esc(b.series)} <span aria-hidden="true">→</span></a>`
+    ? `<a class="series-link" href="${seriesHref(b)}">${b.seriesNum ? `#${esc(b.seriesNum)} · ` : ''}${esc(b.series)}</a>`
     : '';
 
   return `<article class="stack-lg" data-book="${b.id}">
@@ -89,6 +89,8 @@ export function bookDetail(b, backHref) {
         </div>
       </div>
     </div>
+
+    ${seriesCard(b)}
 
     <div class="status-pick" role="group" aria-label="Status">
       ${STATUSES.map((s) => `<button data-action="status" data-id="${b.id}" data-v="${s.id}" class="${b.status === s.id ? 'on' : ''}">${s.label}</button>`).join('')}

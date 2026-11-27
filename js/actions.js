@@ -156,6 +156,9 @@ export function handleAction(e) {
     case 'retry-shelf': rerender(); break;
     case 'manual-add': manualAddSheet(el.dataset); break;
 
+    case 'pick-genre':
+      pickFilters.genres = pickFilters.genres.includes(v) ? pickFilters.genres.filter((g) => g !== v) : [...pickFilters.genres, v];
+      pickFilters.pickId = null; rerender(); break;
     case 'pick-mood':
       pickFilters.moods = pickFilters.moods.includes(v) ? pickFilters.moods.filter((m) => m !== v) : [...pickFilters.moods, v];
       pickFilters.pickId = null; rerender(); break;

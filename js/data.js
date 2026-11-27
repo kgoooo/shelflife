@@ -104,3 +104,40 @@ export const COVER_TONES = [
   ['#3a3532', '#6e5a55'], ['#2f3430', '#5c6b5a'], ['#34302a', '#7a6a4e'], ['#302d35', '#625670'],
   ['#2b2f33', '#56616b'], ['#3b3030', '#7d5b58'], ['#2d302d', '#4f5f52'], ['#353029', '#6b5d48'],
 ];
+
+// Genres outside romance, for Discover. `match` recognises the genre in a book's genre labels;
+// `subjects` are Open Library subject names used to find popular books in it.
+export const GENRES = {
+  'Thriller': { match: /thriller|suspense/i, subjects: ['thrillers', 'psychological thrillers', 'suspense'], mood: ['Tense'] },
+  'Mystery': { match: /mystery|mysteries|detective|crime fiction|whodunit/i, subjects: ['mystery', 'detective and mystery stories', 'crime fiction'], mood: ['Mysterious'] },
+  'Fantasy': { match: /(^|[^-])\bfantasy\b/i, subjects: ['epic fantasy', 'fantasy fiction', 'high fantasy', 'dark fantasy'], mood: ['Adventurous'] },
+  'Science fiction': { match: /science fiction|\bsci-fi\b(?! & fantasy)|dystopia|space opera/i, subjects: ['science fiction', 'dystopias'], mood: ['Adventurous', 'Challenging'] },
+  'Horror': { match: /horror|ghost stories|gothic/i, subjects: ['horror', 'horror fiction', 'horror tales'], mood: ['Dark'] },
+  'Historical fiction': { match: /historical fiction|historical novel/i, subjects: ['historical fiction'], mood: ['Emotional', 'Reflective'] },
+  'Literary fiction': { match: /literary fiction|literary/i, subjects: ['literary fiction', 'psychological fiction'], mood: ['Reflective'] },
+  'Contemporary fiction': { match: /women'?s fiction|domestic fiction|contemporary fiction|family life/i, subjects: ["women's fiction", 'domestic fiction', 'family life'], mood: ['Emotional'] },
+  'Young adult': { match: /young adult|juvenile fiction|\bteens?\b/i, subjects: ['young adult fiction'], mood: ['Adventurous'] },
+  'Memoir': { match: /memoir|biography|autobiography/i, subjects: ['biography', 'autobiography', 'memoirs'], mood: ['Reflective', 'Inspiring'] },
+};
+
+// Which non-romance genres a book belongs to, from its genre labels.
+export function genresOf(book) {
+  const labels = (book.subjects || []).join(' · ').replace(/sci-fi (&|and) fantasy/gi, '');
+  return Object.entries(GENRES).filter(([, g]) => g.match.test(labels)).map(([name]) => name);
+}
+
+// Subjects that mark a book as romance-led.
+export const ROMANCE_SUBJECTS = /romance|love stories|romantasy|erotic|erotica|lovers/i;
+
+// Genres for the "What should I read next?" picker: the genres above plus Romance and Romantasy.
+export function readingGenres(book) {
+  const list = genresOf(book);
+  const labels = (book.subjects || []).join(' ');
+  const romance = book.tropes.length > 0 || ROMANCE_SUBJECTS.test(labels);
+  if (romance) {
+    list.push('Romance');
+    if (book.tropes.includes('Romantasy') || list.includes('Fantasy') || /romantasy|fantasy romance/i.test(labels)) list.push('Romantasy');
+  }
+  return [...new Set(list)];
+}
+export const PICKER_GENRE_ORDER = ['Romance', 'Romantasy', ...Object.keys(GENRES)];
