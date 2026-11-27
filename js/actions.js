@@ -7,7 +7,8 @@ import { resultCache } from './views/add.js';
 import { openPreview, getDetails, refreshPreviewActions } from './views/preview.js';
 import { sampleLibrary } from './sample.js';
 import { openCoverPicker, setCover } from './covers.js';
-import { testGoogleKey } from './api.js';
+import { testGoogleKey, seriesFromTitle, stripSeriesSuffix, sameBook } from './api.js';
+import { connectHardcover, disconnectHardcover, testHardcover } from './hardcover.js';
 import { applySuggestions, undoSuggestions } from './autotag.js';
 
 const rerender = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
@@ -16,7 +17,9 @@ async function addFromResult(key, status) {
   const r = resultCache.get(key);
   if (!r || store.findByKey(key)) return;
   const { seriesKeyList, positions, key: _k, rating, olCover, ...fields } = r;
-  const b = store.addBook({ ...fields, status, seriesChecked: !!r.olKey });
+  const fromTitle = !fields.series ? seriesFromTitle(fields.title) : null;
+  if (fromTitle) Object.assign(fields, fromTitle, { title: stripSeriesSuffix(fields.title) });
+  const b = store.addBook({ ...fields, status, seriesChecked: false });
   toast({ tbr: 'Added to your pile', reading: 'Added to reading', read: 'Added to read', upcoming: b.releaseDate ? 'Added to Upcoming' : 'Added to Upcoming. Set its release date.' }[status]);
   refreshPreviewActions();
   const extra = await getDetails(key);
@@ -185,6 +188,17 @@ export function handleAction(e) {
       testGoogleKey(key).then(({ ok, message }) => {
         if (ok) { store.setGoogleKey(key); toast('Google Books is on'); }
         show(message, ok);
+      });
+      break;
+    }
+    case 'connect-hardcover': connectHardcover(); break;
+    case 'disconnect-hardcover': disconnectHardcover(); toast('Hardcover disconnected'); break;
+    case 'test-hardcover': {
+      const el = document.getElementById('hardcover-status');
+      if (el) { el.textContent = 'Testing…'; el.style.color = 'var(--muted)'; }
+      testHardcover({ sameBook }).then(({ ok, message }) => {
+        const e2 = document.getElementById('hardcover-status');
+        if (e2) { e2.textContent = message; e2.style.color = ok ? 'var(--sage)' : 'var(--warn-3)'; }
       });
       break;
     }

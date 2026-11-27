@@ -1,8 +1,8 @@
 // Offline support: app files are cached on install; covers and fonts are cached as you browse.
-const VERSION = 'shelflife-v14';
+const VERSION = 'shelflife-v18';
 const APP_FILES = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
-  'js/app.js', 'js/actions.js', 'js/api.js', 'js/autotag.js', 'js/charts.js', 'js/covers.js', 'js/data.js', 'js/sample.js', 'js/store.js', 'js/ui.js',
+  'js/app.js', 'js/actions.js', 'js/api.js', 'js/autotag.js', 'js/charts.js', 'js/covers.js', 'js/hardcover.js', 'js/data.js', 'js/sample.js', 'js/store.js', 'js/ui.js',
   'js/views/add.js', 'js/views/book.js', 'js/views/discover.js', 'js/views/home.js', 'js/views/library.js', 'js/views/preview.js', 'js/views/series.js',
   'js/views/settings.js', 'js/views/stats.js',
 ];
@@ -22,7 +22,7 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
 
   // Open Library search/API calls: always live.
-  if (url.hostname === 'openlibrary.org' || url.hostname === 'itunes.apple.com' || url.hostname === 'www.googleapis.com') return;
+  if (url.hostname === 'openlibrary.org' || url.hostname === 'itunes.apple.com' || url.hostname === 'www.googleapis.com' || url.hostname.endsWith('hardcover.app')) return;
 
   // Covers + fonts: cache first, they never change.
   if (url.hostname === 'covers.openlibrary.org' || url.hostname.endsWith('mzstatic.com') || url.hostname === 'books.google.com' || url.hostname.endsWith('gstatic.com') || url.hostname === 'fonts.googleapis.com') {

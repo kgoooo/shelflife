@@ -1,6 +1,6 @@
 // Series page: every book in a series in reading order, merged with what's on your shelves.
 import { books, updateBook } from '../store.js';
-import { bySeries, seriesForWork, searchBooks, olMatch } from '../api.js';
+import { bySeries, searchBooks, olMatch, detectSeries, googleKey, googleSeriesFor, googleSeriesMembers, seriesMembersByName, sameBook, norm as titleKey, stripSeriesSuffix, hardcoverConnected, hcSeriesFor, hcSeriesMembers } from '../api.js';
 import { esc, icons, coverHTML, starsInline, countdown } from '../ui.js';
 import { resultCache } from './add.js';
 
@@ -11,26 +11,38 @@ const norm = (s) => String(s || '').toLowerCase().replace(/^(the|a|an)\s+/, '').
 
 export const seriesHref = (b) => b.seriesKey ? `#/series/${b.seriesKey}` : `#/series/name/${encodeURIComponent(b.series)}`;
 
-// Books added before series data was stored: look it up once in the background.
+// Look up a book's series once (and again whenever the detection gets smarter: bump the version).
+// Version 2 = checked with the free sources; 3 = also checked with Google. Books get re-checked
+// once after you add a Google key.
+const seriesCheck = () => (hardcoverConnected() ? 4 : googleKey() ? 3 : 2); // 4 = checked with Hardcover
 export function ensureSeries(b) {
-  if (b.seriesKey || b.seriesChecked || checking.has(b.id) || (!b.olKey && !b.appleId && !b.googleId)) return;
+  if (b.seriesKey || b.seriesChecked >= seriesCheck() || checking.has(b.id)) return;
+  if (b.series && b.seriesNum) return;                        // you've filled it in yourself
   checking.add(b.id);
-  // Books found only on Apple Books get matched to their Open Library work first (for series + page count).
-  const lookup = b.olKey
-    ? seriesForWork(b.olKey).then((info) => ({ info }))
-    : olMatch(b.title, b.authors[0]).then((o) => ({
-      ol: o,
-      info: o?.seriesKey ? { seriesKey: o.seriesKey, series: o.series, seriesNum: o.seriesNum } : null,
-    }));
-  lookup
-    .then(({ info, ol }) => {
-      const patch = { seriesChecked: true };
-      if (ol) { patch.olKey = ol.olKey; if (!b.pages && ol.pages) patch.pages = ol.pages; }
-      if (info && (!b.series || norm(b.series) === norm(info.series))) Object.assign(patch, info, { series: b.series || info.series, seriesNum: b.seriesNum || info.seriesNum });
-      updateBook(b.id, patch);
-    })
-    .catch(() => {})
-    .finally(() => checking.delete(b.id));
+  (async () => {
+    const patch = { seriesChecked: seriesCheck() };
+    // Books found only on Apple/Google: match them to an Open Library work first (series, page count).
+    let book = b;
+    if (!b.olKey && b.title) {
+      const ol = await olMatch(b.title, b.authors[0]).catch(() => null);
+      if (ol) { patch.olKey = ol.olKey; if (!b.pages && ol.pages) patch.pages = ol.pages; book = { ...b, olKey: ol.olKey }; }
+    }
+    const info = await detectSeries(book).catch(() => null);
+    if (info?.series && (!b.series || norm(b.series) === norm(info.series))) {
+      Object.assign(patch, { series: b.series || info.series, seriesNum: b.seriesNum || info.seriesNum || '' });
+      if (info.seriesKey) patch.seriesKey = info.seriesKey;
+    }
+    updateBook(b.id, patch);
+  })().catch(() => {}).finally(() => checking.delete(b.id));
+}
+
+// Look up every book in your library that hasn't been checked with the current detection.
+export async function backfillSeries() {
+  const todo = books().filter((b) => !b.seriesKey && !(b.seriesChecked >= seriesCheck()) && !(b.series && b.seriesNum)).slice(0, 30);
+  for (const b of todo) {
+    ensureSeries(b);
+    await new Promise((r) => setTimeout(r, 1500));            // gentle on the book sites
+  }
 }
 
 function load(id, key, name) {
@@ -46,8 +58,43 @@ function load(id, key, name) {
       k = hits.find((r) => r.seriesKey && norm(r.series) === norm(name))?.seriesKey || null;
     }
     entry.key = k;
-    entry.items = k ? await bySeries(k) : [];
-    if (!entry.name) entry.name = entry.items[0]?.series || '';
+    const owner = books().find((b) => (k && b.seriesKey === k) || (name && norm(b.series) === norm(name)));
+    const author = owner?.authors?.[0] || '';
+    // Hardcover first (when connected), then Google Books (with a key): the first source that has
+    // the series sets the list and numbering; the others only add books it's missing.
+    let hardcover = [];
+    if (k && k.startsWith('hc:')) {
+      const h = await hcSeriesMembers(k.slice(3)).catch(() => ({ items: [] }));
+      hardcover = h.items;
+      if (h.name) entry.name = h.name;
+    } else if (hardcoverConnected() && owner) {
+      const found = await hcSeriesFor(owner.title, author, { sameBook }).catch(() => null);
+      if (found?.seriesKey) {
+        const h = await hcSeriesMembers(found.seriesKey.slice(3)).catch(() => ({ items: [] }));
+        hardcover = h.items;
+        if (h.name && !entry.name) entry.name = h.name;
+      }
+    }
+    let google = [];
+    if (k && k.startsWith('g:')) google = await googleSeriesMembers(k.slice(2)).catch(() => []);
+    else if (!hardcover.length && googleKey() && owner) {
+      const g = await googleSeriesFor(owner.title, author).catch(() => null);
+      if (g?.seriesKey) {
+        google = await googleSeriesMembers(g.seriesKey.slice(2)).catch(() => []);
+        if (!entry.name && g.series) entry.name = g.series;
+      }
+    }
+    // Then the other sources, which also fill in books Google doesn't carry.
+    let others = [];
+    if (k && !k.startsWith('g:') && !k.startsWith('hc:')) others = await bySeries(k).catch(() => []);  // Open Library series
+    else if (!hardcover.length && name && author) others = await seriesMembersByName(name, author).catch(() => []);  // pieced together
+    entry.items = [...hardcover];
+    google.forEach((x) => { if (!entry.items.some((i) => sameBook(i, x))) entry.items.push(x); });
+    // When Hardcover has the series, only add other sources' books that carry a number Hardcover lacks.
+    if (hardcover.length) others = others.filter((x) => x.seriesNum && !hardcover.some((h) => parseFloat(h.seriesNum) === parseFloat(x.seriesNum)));
+    others.forEach((x) => { if (!entry.items.some((i) => sameBook(i, x))) entry.items.push(x); });
+    entry.items.sort((a, b) => (parseFloat(a.seriesNum) || 999) - (parseFloat(b.seriesNum) || 999));
+    if (!entry.name) entry.name = entry.items[0]?.series || name || '';
     entry.state = 'done';
   })()
     .catch(() => { entry.state = 'error'; })
@@ -76,13 +123,13 @@ function statusBadge(b) {
 
 function row(num, r, own) {
   const shown = own || r;
-  const n = String(num ?? '').padStart(2, '0');
+  const n = num === '' || num == null ? '·' : String(num) === '0' ? 'P' : String(num).padStart(2, '0');
   const coverLink = own
     ? `<a href="#/book/${own.id}" style="width:62px;flex-shrink:0">${coverHTML(shown)}</a>`
     : `<button class="tile-link" style="width:62px;flex-shrink:0" data-action="preview" data-key="${esc(r.key)}" aria-label="More about ${esc(r.title)}">${coverHTML(shown)}</button>`;
   const title = own
     ? `<a href="#/book/${own.id}" class="t">${esc(own.title)}</a>`
-    : `<button class="tile-link t" data-action="preview" data-key="${esc(r.key)}">${esc(r.title)}</button>`;
+    : `<button class="tile-link t" data-action="preview" data-key="${esc(r.key)}">${esc(stripSeriesSuffix(r.title))}</button>`;
   const thisYear = new Date().getFullYear();
   const future = r && (!r.year || r.year >= thisYear);
   const actions = own
@@ -114,15 +161,22 @@ export function seriesData(a, b) {
     (entry.key && x.seriesKey === entry.key) || (x.series && norm(x.series) === norm(name)));
   const used = new Set();
   const merged = entry.items.map((r) => {
-    const own = owned.find((o) => !used.has(o.id) && (o.olKey === r.olKey || norm(o.title) === norm(r.title)));
-    if (own) used.add(own.id);
-    return { num: r.seriesNum, r, own };
+    const own = owned.find((o) => !used.has(o.id) && ((r.olKey && o.olKey === r.olKey) || (r.hardcoverId && o.hardcoverId === r.hardcoverId) || titleKey(o.title) === titleKey(r.title)));
+    if (own) {
+      used.add(own.id);
+      // Learned this book's number from the series list: save it, so its page can say "Book 1 of 7".
+      if (!own.seriesNum && r.seriesNum) setTimeout(() => updateBook(own.id, { seriesNum: r.seriesNum }), 0);
+    }
+    return { num: r.seriesNum || own?.seriesNum || '', r, own };
   });
   owned.filter((o) => !used.has(o.id)).forEach((own) => merged.push({ num: own.seriesNum, r: null, own }));
-  merged.sort((x, y) => (parseFloat(x.num) || 999) - (parseFloat(y.num) || 999));
+  // Numbered books in order (a prequel "0" first), then unnumbered ones by year.
+  const n = (m) => (m.num === '' || m.num == null || isNaN(parseFloat(m.num)) ? Infinity : parseFloat(m.num));
+  const yr = (m) => (m.own || m.r)?.year || (m.own || m.r)?.releaseDate?.slice(0, 4) || 9999;
+  merged.sort((x, y) => n(x) - n(y) || yr(x) - yr(y));
 
   // "Book 2 of 5" counts the main books; novellas like 1.5 are listed but not counted.
-  const mainNums = merged.map((m) => parseFloat(m.num)).filter((n) => Number.isInteger(n));
+  const mainNums = merged.map((m) => parseFloat(m.num)).filter((n) => Number.isInteger(n) && n > 0); // prequels (0) don't count
   const mainTotal = Math.max(mainNums.length, ...mainNums, 0);
   return {
     entry, name, merged,
@@ -146,7 +200,10 @@ export function seriesCountLabel(num, seriesKey) {
 
 // The series block on a book's page: name, "Book 2 of 5", and a strip of every book in it.
 export function seriesCard(book) {
-  if (!book.series && !book.seriesKey) return '';
+  if (!book.series && !book.seriesKey) {
+    if (checking.has(book.id)) return '<p class="small faint" style="margin:0">Checking for a series… <span class="loader" style="width:12px;height:12px;vertical-align:-2px"></span></p>';
+    return `<button class="btn btn-sm btn-ghost series-add" data-action="edit-info" data-id="${book.id}">Part of a series? Add it</button>`;
+  }
   const d = seriesData(...routeFor(book));
   const loading = d.entry.state === 'loading';
   const pos = book.seriesNum ? `Book ${esc(book.seriesNum)}${d.mainTotal ? ` of ${d.mainTotal}` : ''}` : (d.mainTotal ? `${d.mainTotal} books` : '');

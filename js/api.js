@@ -3,6 +3,7 @@
 //  - Apple Books search (iTunes Search API), ebooks and audiobooks: new releases, pre-orders with release dates, sharp covers
 //  - Google Books (optional, needs your own free API key in Settings): exact release dates, print-only books
 import { getState } from './store.js';
+import { hardcoverConnected, hcSeriesFor, hcSeriesMembers } from './hardcover.js';
 const OL = 'https://openlibrary.org';
 
 export const coverUrl = (coverId, size = 'M') =>
@@ -412,3 +413,171 @@ export function foreignBlurb(text) {
   const other = (text.match(OTHER_WORDS) || []).length;
   return other > en * 1.5 && other >= 5;
 }
+
+/* ---------------- Series detection beyond Open Library's series list ---------------- */
+const NUM_WORDS = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10,
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+const toNum = (w) => { if (!w) return ''; const n = NUM_WORDS[String(w).toLowerCase()]; return n ? String(n) : String(parseFloat(w) || ''); };
+const cleanSeriesName = (s) => String(s || '').replace(/^(the|a|an)\s+(?=\w+\s+\w)/i, (m) => m) // keep "The" if it's part of the name
+  .replace(/\s+(series|saga|trilogy|duology|duet|quartet|novels?|books?)$/i, '').replace(/[\s,;:#-]+$/, '').trim();
+
+// "Bonded by Thorns (Beasts of the Briar, #1)", "…(Beasts of the Briar Book 1)", "Title: Court of Ravens Book 2"
+// "Bonded by Thorns: Beasts of the Briar, Book 1" -> "Bonded by Thorns" (the series is stored separately).
+export function stripSeriesSuffix(title) {
+  const t = String(title || '');
+  if (!seriesFromTitle(t)) return t;
+  return t.replace(/\s*\(([^()]*?)(book|bk\.?|vol\.?|volume|part|#|prequel|novella)[^()]*\)\s*$/i, '')
+    .replace(/\s*:\s*(an?\s+)?[^:]*?\b(book|volume|novel)\s+(\d+(\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\b.*$/i, '')
+    .replace(/\s*:\s*an?\s+[^:]*?\b(prequel|novella)\b.*$/i, '')
+    .trim() || t;
+}
+
+export function seriesFromTitle(title) {
+  const t = String(title || '');
+  const pre = t.match(/:\s*an?\s+(.{3,60}?)\s+(?:prequel|novella)\b/i);
+  if (pre) return { series: cleanSeriesName(pre[1]), seriesNum: '0' };
+  let m = t.match(/\(([^()]{3,60}?)[,:]?\s*(?:book|bk\.?|vol\.?|volume|part|#)\s*(\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\s*\)/i);
+  if (m) return { series: cleanSeriesName(m[1]), seriesNum: toNum(m[2]) };
+  m = t.match(/:\s*(?:an?\s+)?([^:]{3,60}?)\s+(?:book|volume|novel)\s+(\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\b/i);
+  if (m) return { series: cleanSeriesName(m[1].replace(/^.*?\b(a|an)\s+/i, '')), seriesNum: toNum(m[2]) };
+  return null;
+}
+
+// Open Library edition field: "Court of Ravens, 1", "Beasts of the Briar ; 2", "Beasts of the Briar #2", "Beasts of the Briar"
+function seriesFromEditionField(s) {
+  const m = String(s || '').match(/^(.{2,60}?)(?:\s*[,;#]\s*(?:book|bk\.?|vol\.?|no\.?)?\s*(\d+(?:\.\d+)?))?\s*\.?$/i);
+  return m ? { series: cleanSeriesName(m[1]), seriesNum: m[2] || '' } : null;
+}
+
+// Blurbs: "the first installment in Melissa K. Roehrich's internationally bestselling Legacy Series".
+// Needs a position word nearby, so "for fans of the Court of Thorns and Roses series" doesn't count.
+export function seriesFromBlurb(text) {
+  const t = String(text || '');
+  const re = /((?:[A-Z][\w'’-]*|of|the|and|in)(?:\s+(?:[A-Z][\w'’-]*|of|the|and|in)){0,6})\s+(series|saga|trilogy|duology|duet|quartet)\b/gi;
+  let m;
+  while ((m = re.exec(t))) {
+    const before = t.slice(Math.max(0, m.index - 140), m.index).replace(/\b([A-Z])\./g, '$1'); // "Melissa K. Roehrich"
+    if (/fans of|readers of|like the|if you (loved|liked)/i.test(before.slice(-60))) continue;
+    const pos = before.match(/\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|\d+(?:st|nd|rd|th)|book\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)|#\s?\d+)\b[^.]*$/i);
+    if (!pos) continue;
+    // Keep the capitalised run right before "Series" ("internationally bestselling Legacy" -> "Legacy").
+    const words = m[1].split(/[’']s\s+/).pop().split(/\s+/);
+    const keep = [];
+    for (let i = words.length - 1; i >= 0; i--) {
+      const w = words[i];
+      if (/^[A-Z]/.test(w) || (keep.length && /^(of|the|and|in)$/.test(w))) keep.unshift(w); else break;
+    }
+    while (keep.length > 1 && /^(of|the|and|in)$/.test(keep[0])) keep.shift();      // lowercase lead-ins only
+    let name = keep.join(' ').replace(/^(New|Bestselling|Instant|Romantic|Dark|Epic|Spicy|Hit|Viral)\s+/, '');
+    if (!/^[A-Z]/.test(name) || name.split(/\s+/).length > 6) continue;
+    const n = pos[1].replace(/^book\s+|^#\s?/i, '').replace(/^(\d+)(st|nd|rd|th)$/i, '$1');
+    return { series: cleanSeriesName(name), seriesNum: toNum(n) };
+  }
+  return null;
+}
+
+async function seriesFromEditions(olKey) {
+  try {
+    const res = await fetch(`${OL}${olKey}/editions.json?limit=50`, { signal: withTimeout(15000) });
+    if (!res.ok) return null;
+    const { entries = [] } = await res.json();
+    let best = null;
+    for (const e of entries) {
+      for (const s of e.series || []) {
+        const p = seriesFromEditionField(s);
+        if (p && (!best || (!best.seriesNum && p.seriesNum))) best = p;
+      }
+    }
+    return best;
+  } catch { return null; }
+}
+
+// Google Books series (needs your key): the volume's seriesInfo gives an id and position;
+// series/get gives the name and series/membership/get lists every book in it.
+async function gfetch(path) {
+  const key = googleKey();
+  if (!key) return null;
+  try {
+    const res = await fetch(`https://www.googleapis.com/books/v1/${path}${path.includes('?') ? '&' : '?'}key=${encodeURIComponent(key)}`, { signal: withTimeout(15000) });
+    return res.ok ? await res.json() : null;
+  } catch { return null; }
+}
+
+export async function googleSeriesFor(title, author) {
+  const data = await gfetch(`volumes?q=${encodeURIComponent(`intitle:${title} inauthor:${author || ''}`)}&maxResults=10`);
+  const want = { title, authors: [author] };
+  for (const v of data?.items || []) {
+    const info = v.volumeInfo || {};
+    const vs = info.seriesInfo?.volumeSeries?.[0];
+    if (!vs?.seriesId || !sameBook({ title: info.title, authors: info.authors || [] }, want)) continue;
+    const meta = await gfetch(`series/get?series_id=${encodeURIComponent(vs.seriesId)}`);
+    const name = meta?.series?.[0]?.title || seriesFromTitle(info.title)?.series || '';
+    return { seriesKey: `g:${vs.seriesId}`, series: cleanSeriesName(name), seriesNum: String(info.seriesInfo.bookDisplayNumber || vs.orderNumber || '') };
+  }
+  return null;
+}
+
+export async function googleSeriesMembers(seriesId) {
+  const data = await gfetch(`series/membership/get?series_id=${encodeURIComponent(seriesId)}&page_size=40`);
+  return (data?.member || []).map((v) => {
+    const r = fromGoogle(v);
+    const si = v.volumeInfo?.seriesInfo;
+    return { ...r, seriesNum: String(si?.bookDisplayNumber || si?.volumeSeries?.[0]?.orderNumber || '') };
+  }).filter((r) => r.seriesNum && !notANovel(r));
+}
+
+// Best guess at a book's series, trying each source in turn.
+// Best guess at a book's series. Hardcover, then Google Books when you have a key (its series data
+// tends to be the most accurate where it has the book); everything else is the fallback for books
+// Google doesn't carry, such as Kindle-exclusive titles.
+export async function detectSeries(book) {
+  const author = book.authors?.[0] || '';
+  // Hardcover first when connected: reader-maintained, so it covers indie and Kindle-only series.
+  if (hardcoverConnected()) {
+    const h = await hcSeriesFor(book.title, author, { sameBook }).catch(() => undefined);
+    if (h) return h;
+    if (h === null) return null;                              // Hardcover has the book and it's a standalone
+  }
+  if (googleKey()) {
+    const g = await googleSeriesFor(book.title, author);
+    if (g) return g;
+  }
+  if (book.olKey) {
+    const ol = await seriesForWork(book.olKey).catch(() => null);
+    if (ol) return ol;
+    const ed = await seriesFromEditions(book.olKey);
+    if (ed?.series) return ed;
+  }
+  return seriesFromTitle(book.title) || seriesFromBlurb(book.description) || null;
+}
+
+// Books in a series Open Library doesn't list: search the author's books on every source and keep
+// the ones whose title, blurb or edition records name the same series.
+export async function seriesMembersByName(name, author) {
+  const want = norm(name);
+  const same = (s) => s && (norm(s) === want || norm(s).includes(want) || want.includes(norm(s)));
+  const [found, olWorks] = await Promise.all([
+    findBooks(`${name} ${author}`).catch(() => []),
+    searchBooks(`author:"${author}"`, { limit: 20 }).catch(() => []),
+  ]);
+  const byAuthor = (r) => lastName(r.authors?.[0]) === lastName(author);
+  const pool = [...found, ...olWorks].filter(byAuthor);
+  const out = [];
+  for (const r of pool) {
+    const p = (r.seriesKey && { series: r.series, seriesNum: r.seriesNum }) || seriesFromTitle(r.title) || seriesFromBlurb(r.description);
+    if (p && same(p.series)) out.push({ ...r, seriesNum: p.seriesNum || r.seriesNum || '' });
+  }
+  // Edition records for the author's other Open Library works (a handful, in parallel).
+  const unknown = olWorks.filter((r) => byAuthor(r) && r.olKey && !out.some((o) => sameBook(o, r))).slice(0, 10);
+  const eds = await Promise.all(unknown.map((r) => seriesFromEditions(r.olKey).then((p) => (p && same(p.series) ? { ...r, seriesNum: p.seriesNum || '' } : null))));
+  out.push(...eds.filter(Boolean));
+  // One entry per book, numbered ones first.
+  const uniq = [];
+  for (const r of out.sort((a, b) => (b.seriesNum ? 1 : 0) - (a.seriesNum ? 1 : 0))) {
+    const i = uniq.findIndex((u) => sameBook(u, r));
+    if (i === -1) uniq.push(r);
+  }
+  return uniq.map((r) => ({ ...r, title: stripSeriesSuffix(r.title), seriesNum: r.seriesNum || '' }));
+}
+
+export { hardcoverConnected, hcSeriesFor, hcSeriesMembers };

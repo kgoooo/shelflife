@@ -921,3 +921,4 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px
 .series-row:hover { background: var(--surface); }
 .chip.genre.on { background: var(--sand-dim); border-color: var(--sand); color: #ece2cc; }
 .chip .count { font-size: 11px; opacity: .65; }
+.series-add { align-self: flex-start; padding: 0 12px; color: var(--rose); }

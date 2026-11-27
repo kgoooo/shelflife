@@ -69,7 +69,7 @@ export function toast(msg) {
   el.textContent = msg;
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+  toastTimer = setTimeout(() => el.classList.remove("show"), Math.max(2200, String(msg).length * 60)); // long messages stay up longer
 }
 
 // Bottom sheet on the folded screen, centered dialog when unfolded.

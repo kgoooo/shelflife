@@ -1,4 +1,5 @@
 import { getState, books, hasPin, isUnlocked, privateCount } from '../store.js';
+import { hardcoverConnected } from '../hardcover.js';
 import { esc, icons } from '../ui.js';
 
 export function settingsView() {
@@ -22,6 +23,17 @@ export function settingsView() {
           : '<button class="btn btn-light" data-action="open-after-dark">Unlock</button>'}
       </div>
       <p class="tiny faint" style="margin:0">This hides books from anyone looking at your screen. It isn't encryption: exported backups include these books.</p>
+    </section>
+
+    <section class="card stack">
+      <div class="spread"><h2 class="h2">Hardcover</h2><span class="tag ${hardcoverConnected() ? 'sage' : ''}">${hardcoverConnected() ? 'Connected' : 'Off'}</span></div>
+      <p class="small muted" style="margin:0">Optional. Hardcover's reader-maintained catalogue has the most complete series lists, including indie and Kindle-only books. Shelflife only reads public book data; your sign-in stays on this device and is left out of backups.</p>
+      <div class="row" style="flex-wrap:wrap">
+        ${hardcoverConnected()
+          ? '<button class="btn" data-action="test-hardcover">Test</button><button class="btn btn-ghost" data-action="disconnect-hardcover">Disconnect</button>'
+          : '<button class="btn btn-light" data-action="connect-hardcover">Connect Hardcover</button>'}
+      </div>
+      <p class="small" id="hardcover-status" role="status" style="margin:0"></p>
     </section>
 
     <section class="card stack">

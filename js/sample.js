@@ -45,6 +45,6 @@ export function sampleLibrary() {
     newBook({ title: 'Sudden Death', authors: ['Jess Harlow'], series: 'Off-Ice', seriesNum: '4', status: 'upcoming', releaseDate: `${Y + 2}-01-06`, dateAdded: d(10, 15), tropes: ['Hockey romance'] }),
     newBook({ title: 'Moonlit Marsh: Book Two', authors: ['Cass Rowan'], status: 'upcoming', releaseDate: null, dateAdded: d(11, 1) }),
   );
-  books.forEach((b) => { b.seriesChecked = true; b.coverChecked = true; }); // made-up books: nothing to look up
+  books.forEach((b) => { b.seriesChecked = 3; b.coverChecked = true; }); // made-up books: nothing to look up
   return { goal: 30, books, customTropes: [], customWarnings: [] };
 }

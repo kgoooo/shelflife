@@ -82,6 +82,7 @@ export function newBook(fields = {}) {
     olKey: null,
     appleId: null,
     googleId: null,
+    hardcoverId: null,
     title: 'Untitled',
     authors: [],
     cover: null,
@@ -159,27 +160,31 @@ export function addCustom(kind, name) {
 
 // Search results are keyed by Open Library work ("/works/OL…W") or Apple Books id ("apple:123").
 export const findByKey = (key) => key && state.books.find((b) =>
-  b.olKey === key || (b.appleId && `apple:${b.appleId}` === key) || (b.googleId && `google:${b.googleId}` === key));
+  b.olKey === key || (b.appleId && `apple:${b.appleId}` === key) || (b.googleId && `google:${b.googleId}` === key)
+  || (b.hardcoverId && `hc:book:${b.hardcoverId}` === key));
 
 // The Google key stays on this device: never written into backup files.
 export function exportJSON() {
-  const { googleKey, ...rest } = state;
+  const { googleKey, hardcover, ...rest } = state;
   return JSON.stringify(rest, null, 2);
 }
 
 export function setGoogleKey(key) { state.googleKey = key.trim(); persist(); }
 
+// Hardcover sign-in tokens: on this device only, never in backups.
+export function setHardcover(tokens) { state.hardcover = tokens || null; persist(); }
+
 export function importJSON(text) {
   const s = JSON.parse(text);
   if (!s || !Array.isArray(s.books)) throw new Error('That file is not a Shelflife backup.');
-  const { googleKey } = state;
-  state = { ...defaults(), ...s, googleKey };
+  const { googleKey, hardcover } = state;
+  state = { ...defaults(), ...s, googleKey, hardcover };
   persist();
 }
 
 export function replaceAll(next) {
   // The sample library keeps your Google key and PIN.
-  state = { ...defaults(), ...next, googleKey: state.googleKey, privatePin: state.privatePin };
+  state = { ...defaults(), ...next, googleKey: state.googleKey, hardcover: state.hardcover, privatePin: state.privatePin };
   persist();
 }
 export function clearAll() { state = defaults(); unlocked = false; persist(); }

@@ -8,8 +8,10 @@ import { addView, mountAdd } from './views/add.js';
 import { discoverView, mountDiscover } from './views/discover.js';
 import { statsView } from './views/stats.js';
 import { settingsView } from './views/settings.js';
-import { seriesView } from './views/series.js';
+import { seriesView, backfillSeries } from './views/series.js';
 import { backfillCovers } from './covers.js';
+import { finishHardcoverSignIn } from './hardcover.js';
+import { toast } from './ui.js';
 import { handleAction, handleChange, handleInput, handleSubmit, openUnlock } from './actions.js';
 
 const view = document.getElementById('view');
@@ -118,8 +120,10 @@ window.addEventListener('pagehide', lock);
 
 window.addEventListener('hashchange', render);
 subscribe(render);
-render();
+// Coming back from Hardcover's sign-in page? Finish it first (this also tidies the address bar).
+finishHardcoverSignIn().then((r) => { render(); if (r) toast(r.message); }).catch(() => render());
 setTimeout(backfillCovers, 1500);
+setTimeout(backfillSeries, 6000);
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
